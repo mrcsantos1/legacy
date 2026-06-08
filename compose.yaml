@@ -1,0 +1,23 @@
+services:
+  web:
+    build:
+      context: .
+    ports:
+      - "127.0.0.1:${LEGACY_WEB_PORT:-3000}:3000"
+    environment:
+      LEGACY_DEFAULT_REDIS_URL: ${LEGACY_DEFAULT_REDIS_URL:-}
+      LEGACY_SESSION_SECRET: ${LEGACY_SESSION_SECRET:-change-me-in-production}
+      NEXT_TELEMETRY_DISABLED: "1"
+    restart: unless-stopped
+
+  demo-redis:
+    image: redis:7-alpine
+    profiles:
+      - demo-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
