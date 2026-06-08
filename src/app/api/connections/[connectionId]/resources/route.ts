@@ -21,6 +21,7 @@ export async function GET(request: Request, context: RouteContext) {
     const count = parseOptionalInteger(url.searchParams.get("count"));
     const cursor = url.searchParams.get("cursor") ?? undefined;
     const search = url.searchParams.get("search") ?? undefined;
+    const scope = parseScope(url.searchParams.get("scope"));
     const type = url.searchParams.get("type") ?? undefined;
     const connection = resolveConnection(session.sessionId, connectionId);
     const result = await databaseService.listResources(connection, {
@@ -28,6 +29,7 @@ export async function GET(request: Request, context: RouteContext) {
       cursor,
       delimiter,
       namespace,
+      scope,
       search,
       type
     });
@@ -49,4 +51,12 @@ function parseOptionalInteger(value: string | null): number | undefined {
 
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : undefined;
+}
+
+function parseScope(value: string | null): "children" | "descendants" | undefined {
+  if (value === "children" || value === "descendants") {
+    return value;
+  }
+
+  return undefined;
 }

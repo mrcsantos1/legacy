@@ -58,6 +58,7 @@ function createFakeAdapter(): DatabaseAdapter {
             depth: 0,
             hasChildren: true,
             id: "user",
+            kind: "folder",
             label: "user",
             path: ["user"]
           }

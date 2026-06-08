@@ -9,7 +9,7 @@ export function FieldLabel({
 }: LabelHTMLAttributes<HTMLLabelElement> & { readonly children: ReactNode }) {
   return (
     <label
-      className={clsx("text-xs font-medium uppercase text-slate-500", className)}
+      className={clsx("text-xs font-medium uppercase text-[#6F675C]", className)}
       {...props}
     >
       {children}
@@ -24,7 +24,7 @@ export function TextInput({
   return (
     <input
       className={clsx(
-        "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100",
+        "h-9 w-full rounded-md border border-[#C3BAAA] bg-[#FBF7EF] px-3 text-sm text-[var(--legacy-ink)] outline-none transition placeholder:text-[#8E8578] focus:border-[var(--legacy-rust)] focus:ring-2 focus:ring-[#E8C4AA]",
         className
       )}
       {...props}
