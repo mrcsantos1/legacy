@@ -44,13 +44,17 @@ export interface AdapterCapabilities {
   readonly supportsTabularRows: boolean;
 }
 
+export type NamespaceNodeKind = "folder" | "hybrid" | "record";
+
 export interface NamespaceNode {
   readonly cursor?: string;
   readonly depth: number;
   readonly hasChildren: boolean;
   readonly id: string;
+  readonly kind: NamespaceNodeKind;
   readonly label: string;
   readonly path: string[];
+  readonly resourceId?: string;
 }
 
 export interface NamespaceListQuery {
@@ -78,12 +82,15 @@ export interface ResourceDescriptor {
   readonly type: string;
 }
 
+export type ResourceListScope = "children" | "descendants";
+
 export interface ResourceListQuery {
   readonly count?: number;
   readonly cursor?: string;
   readonly delimiter?: string;
   readonly namespace?: string[];
   readonly search?: string;
+  readonly scope?: ResourceListScope;
   readonly type?: string;
 }
 

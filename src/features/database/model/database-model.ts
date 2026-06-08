@@ -13,7 +13,8 @@ import type {
   NamespaceNode,
   NewConnectionInput,
   ResourceDescriptor,
-  ResourceInspection
+  ResourceInspection,
+  ResourceListScope
 } from "@/server/database/types";
 
 export function createDatabaseModel(api: DatabaseApi) {
@@ -43,12 +44,14 @@ export function createDatabaseModel(api: DatabaseApi) {
     (input: {
       connectionId: string;
       namespace?: string[];
+      scope?: ResourceListScope;
       search?: string;
     }) =>
       api.listResources({
         connectionId: input.connectionId,
         count: 100,
         namespace: input.namespace,
+        scope: input.scope,
         search: input.search
       })
   );
@@ -76,15 +79,17 @@ export function createDatabaseModel(api: DatabaseApi) {
     .on(createSessionConnectionFx.doneData, (_, payload) => payload.connection.id)
     .reset(deleteSessionConnectionFx.done);
 
-  const $selectedNamespacePath = createStore<string[]>([]).on(
-    namespaceSelected,
-    (_, path) => path
-  );
-  const $search = createStore("").on(searchChanged, (_, value) => value);
-  const $namespaceNodes = createStore<NamespaceNode[]>([]).on(
-    loadNamespacesFx.doneData,
-    (_, payload) => payload.nodes
-  );
+  const $selectedNamespacePath = createStore<string[]>([])
+    .on(namespaceSelected, (_, path) => path)
+    .reset(connectionSelected);
+  const $search = createStore("")
+    .on(searchChanged, (_, value) => value)
+    .reset(connectionSelected);
+  const $namespaceNodes = createStore<NamespaceNode[]>([])
+    .on(loadNamespacesFx.done, (nodes, { params, result }) =>
+      mergeNamespaceNodes(nodes, params.path ?? [], result.nodes)
+    )
+    .reset(connectionSelected);
   const $resources = createStore<ResourceDescriptor[]>([]).on(
     loadResourcesFx.doneData,
     (_, payload) => payload.resources
@@ -93,10 +98,9 @@ export function createDatabaseModel(api: DatabaseApi) {
     loadResourcesFx.doneData,
     (_, payload) => payload.cursor
   );
-  const $selectedResourceId = createStore<string | null>(null).on(
-    resourceSelected,
-    (_, resourceId) => resourceId
-  );
+  const $selectedResourceId = createStore<string | null>(null)
+    .on(resourceSelected, (_, resourceId) => resourceId)
+    .reset(connectionSelected, namespaceSelected);
   const $inspection = createStore<ResourceInspection | null>(null)
     .on(inspectResourceFx.doneData, (_, inspection) => inspection)
     .reset(connectionSelected, namespaceSelected);
@@ -156,7 +160,12 @@ export function createDatabaseModel(api: DatabaseApi) {
 
   sample({
     clock: connectionSelected,
-    fn: (connectionId) => ({ connectionId, namespace: [], search: "" }),
+    fn: (connectionId) => ({
+      connectionId,
+      namespace: [],
+      scope: "children" as const,
+      search: ""
+    }),
     target: loadResourcesFx
   });
 
@@ -178,6 +187,7 @@ export function createDatabaseModel(api: DatabaseApi) {
     fn: ({ connectionId, search }, namespace) => ({
       connectionId: connectionId!,
       namespace,
+      scope: resourceScopeForSearch(search),
       search
     }),
     target: loadResourcesFx
@@ -194,6 +204,7 @@ export function createDatabaseModel(api: DatabaseApi) {
     fn: ({ connectionId, namespace, search }) => ({
       connectionId: connectionId!,
       namespace,
+      scope: resourceScopeForSearch(search),
       search
     }),
     target: loadResourcesFx
@@ -256,3 +267,31 @@ export function createDatabaseModel(api: DatabaseApi) {
 }
 
 export const databaseModel = createDatabaseModel(databaseApi);
+
+function mergeNamespaceNodes(
+  currentNodes: NamespaceNode[],
+  parentPath: string[],
+  incomingNodes: NamespaceNode[]
+): NamespaceNode[] {
+  const parentKey = pathKey(parentPath);
+  const retainedNodes = currentNodes.filter(
+    (node) => pathKey(node.path.slice(0, -1)) !== parentKey
+  );
+  const nodesById = new Map<string, NamespaceNode>();
+
+  for (const node of [...retainedNodes, ...incomingNodes]) {
+    nodesById.set(node.id, node);
+  }
+
+  return [...nodesById.values()].sort((left, right) =>
+    left.path.join(":").localeCompare(right.path.join(":"))
+  );
+}
+
+function pathKey(path: string[]): string {
+  return path.join("\u0000");
+}
+
+function resourceScopeForSearch(search: string): ResourceListScope {
+  return search.trim().length > 0 ? "descendants" : "children";
+}

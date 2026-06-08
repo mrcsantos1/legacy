@@ -3,10 +3,12 @@ import type {
   DataPreview,
   MutationRequest,
   NamespaceListResult,
+  NamespaceNode,
   NewConnectionInput,
   OperationResult,
   ResourceDescriptor,
   ResourceInspection,
+  ResourceListScope,
   ResourceListResult
 } from "@/server/database/types";
 
@@ -37,6 +39,7 @@ export interface DatabaseApi {
     readonly count?: number;
     readonly cursor?: string;
     readonly namespace?: string[];
+    readonly scope?: ResourceListScope;
     readonly search?: string;
   }): Promise<ResourceListResult>;
   mutateResource(input: {
@@ -50,10 +53,12 @@ export type {
   DataPreview,
   MutationRequest,
   NamespaceListResult,
+  NamespaceNode,
   NewConnectionInput,
   OperationResult,
   ResourceDescriptor,
   ResourceInspection,
+  ResourceListScope,
   ResourceListResult
 };
 
@@ -109,6 +114,7 @@ export async function listResources(input: {
   readonly count?: number;
   readonly cursor?: string;
   readonly namespace?: string[];
+  readonly scope?: ResourceListScope;
   readonly search?: string;
 }): Promise<ResourceListResult> {
   const query = new URLSearchParams();
@@ -119,6 +125,10 @@ export async function listResources(input: {
 
   if (input.search) {
     query.set("search", input.search);
+  }
+
+  if (input.scope) {
+    query.set("scope", input.scope);
   }
 
   if (input.cursor) {

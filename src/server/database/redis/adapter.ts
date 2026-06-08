@@ -16,6 +16,7 @@ import {
   decodeResourceId,
   deriveNamespaceNodes,
   encodeResourceId,
+  filterResourceKeysByScope,
   keyToPath,
   namespacePathToMatchPattern
 } from "./namespace";
@@ -125,8 +126,14 @@ export class RedisAdapter implements DatabaseAdapter {
         match,
         type: query.type
       });
+      const scopedKeys = filterResourceKeysByScope({
+        delimiter,
+        keys: scanResult.keys,
+        namespace,
+        scope: query.scope ?? "descendants"
+      });
       const resources = await Promise.all(
-        scanResult.keys.map((key) => this.describeKey(client, key, delimiter))
+        scopedKeys.map((key) => this.describeKey(client, key, delimiter))
       );
 
       return {
