@@ -78,18 +78,31 @@ export function DatabaseWorkbench({
     selectedConnection: model.stores.$selectedConnection,
     selectedConnectionId: model.stores.$selectedConnectionId,
     selectedNamespacePath: model.stores.$selectedNamespacePath,
-    selectedResourceId: model.stores.$selectedResourceId
+    selectedResourceId: model.stores.$selectedResourceId,
+    visibleDataRefreshed: model.events.visibleDataRefreshed
   });
   const [label, setLabel] = useState("Local Redis");
   const [url, setUrl] = useState("redis://localhost:6379");
   const [searchDraft, setSearchDraft] = useState("");
   const [ttlDraft, setTtlDraft] = useState("300");
   const editorRef = useRef<HTMLTextAreaElement>(null);
-  const { appStarted } = units;
+  const { appStarted, selectedConnectionId, visibleDataRefreshed } = units;
 
   useEffect(() => {
     appStarted();
   }, [appStarted]);
+
+  useEffect(() => {
+    if (!selectedConnectionId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      visibleDataRefreshed();
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [selectedConnectionId, visibleDataRefreshed]);
 
   const visibleResources = useMemo(
     () => units.resources.slice(0, 200),
@@ -206,7 +219,7 @@ export function DatabaseWorkbench({
         <LegacyLogo />
         <Button
           disabled={units.isLoadingResources || !units.selectedConnectionId}
-          onClick={() => units.resourcesRefreshed()}
+          onClick={() => units.visibleDataRefreshed()}
           title="Refresh resources"
           variant="secondary"
         >
@@ -662,7 +675,7 @@ function InspectorPanel({
   onUpdate,
   ttlDraft
 }: InspectorPanelProps) {
-  if (isInspecting) {
+  if (isInspecting && !inspection) {
     return (
       <div className="p-4 text-sm text-[#6F675C]">Loading resource</div>
     );

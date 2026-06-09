@@ -24,6 +24,7 @@ export function createDatabaseModel(api: DatabaseApi) {
   const resourceSelected = createEvent<string>();
   const resourcesRefreshed = createEvent();
   const searchChanged = createEvent<string>();
+  const visibleDataRefreshed = createEvent();
 
   const loadConnectionsFx = createEffect(api.getConnections);
   const createSessionConnectionFx = createEffect((input: NewConnectionInput) =>
@@ -241,20 +242,17 @@ export function createDatabaseModel(api: DatabaseApi) {
     target: loadResourcesFx
   });
 
+  const refreshResourcesSource = {
+    connectionId: $selectedConnectionId,
+    namespace: $selectedNamespacePath,
+    search: $search
+  };
+
   sample({
     clock: resourcesRefreshed,
-    source: {
-      connectionId: $selectedConnectionId,
-      namespace: $selectedNamespacePath,
-      search: $search
-    },
+    source: refreshResourcesSource,
     filter: ({ connectionId }) => connectionId !== null,
-    fn: ({ connectionId, namespace, search }) => ({
-      connectionId: connectionId!,
-      namespace,
-      scope: resourceScopeForSearch(search),
-      search
-    }),
+    fn: toLoadResourcesInput,
     target: loadResourcesFx
   });
 
@@ -271,21 +269,51 @@ export function createDatabaseModel(api: DatabaseApi) {
 
   sample({
     clock: mutateResourceFx.done,
-    target: resourcesRefreshed
+    target: visibleDataRefreshed
   });
 
   sample({
-    clock: mutateResourceFx.done,
+    clock: visibleDataRefreshed,
     source: {
       connectionId: $selectedConnectionId,
+      isLoadingNamespaces: $isLoadingNamespaces,
       namespace: $selectedNamespacePath
     },
-    filter: ({ connectionId }) => connectionId !== null,
+    filter: ({ connectionId, isLoadingNamespaces }) =>
+      connectionId !== null && !isLoadingNamespaces,
     fn: ({ connectionId, namespace }) => ({
       connectionId: connectionId!,
       path: namespace
     }),
     target: loadNamespacesFx
+  });
+
+  sample({
+    clock: visibleDataRefreshed,
+    source: {
+      ...refreshResourcesSource,
+      isLoadingResources: $isLoadingResources
+    },
+    filter: ({ connectionId, isLoadingResources }) =>
+      connectionId !== null && !isLoadingResources,
+    fn: toLoadResourcesInput,
+    target: loadResourcesFx
+  });
+
+  sample({
+    clock: visibleDataRefreshed,
+    source: {
+      connectionId: $selectedConnectionId,
+      isInspecting: $isInspecting,
+      resourceId: $selectedResourceId
+    },
+    filter: ({ connectionId, isInspecting, resourceId }) =>
+      connectionId !== null && resourceId !== null && !isInspecting,
+    fn: ({ connectionId, resourceId }) => ({
+      connectionId: connectionId!,
+      resourceId: resourceId!
+    }),
+    target: inspectResourceFx
   });
 
   sample({
@@ -326,7 +354,8 @@ export function createDatabaseModel(api: DatabaseApi) {
       namespaceSelected,
       resourceSelected,
       resourcesRefreshed,
-      searchChanged
+      searchChanged,
+      visibleDataRefreshed
     },
     stores: {
       $connections,
@@ -378,6 +407,24 @@ function pathKey(path: string[]): string {
 
 function resourceScopeForSearch(search: string): ResourceListScope {
   return search.trim().length > 0 ? "descendants" : "children";
+}
+
+function toLoadResourcesInput(input: {
+  readonly connectionId: string | null;
+  readonly namespace: string[];
+  readonly search: string;
+}): {
+  readonly connectionId: string;
+  readonly namespace: string[];
+  readonly scope: ResourceListScope;
+  readonly search: string;
+} {
+  return {
+    connectionId: input.connectionId!,
+    namespace: input.namespace,
+    scope: resourceScopeForSearch(input.search),
+    search: input.search
+  };
 }
 
 function isNotFoundError(error: Error): boolean {

@@ -517,4 +517,94 @@ describe("database Effector model", () => {
       path: []
     });
   });
+
+  it("refreshes the selected record inspection when visible data refreshes", async () => {
+    const inspectResource = vi
+      .fn()
+      .mockResolvedValueOnce({
+        metadata: { ttlSeconds: 5 },
+        resource: {
+          id: "user%3A1",
+          kind: "key",
+          name: "user:1",
+          path: ["user", "1"],
+          provider: "redis",
+          ttlSeconds: 5,
+          type: "string"
+        },
+        value: {
+          encoding: "utf8",
+          kind: "scalar",
+          value: "Ada"
+        }
+      })
+      .mockResolvedValueOnce({
+        metadata: { ttlSeconds: 4 },
+        resource: {
+          id: "user%3A1",
+          kind: "key",
+          name: "user:1",
+          path: ["user", "1"],
+          provider: "redis",
+          ttlSeconds: 4,
+          type: "string"
+        },
+        value: {
+          encoding: "utf8",
+          kind: "scalar",
+          value: "Ada"
+        }
+      });
+    const model = createDatabaseModel({
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return {
+          connections: [
+            {
+              id: "env:redis:default",
+              label: "Default Redis",
+              provider: "redis",
+              source: "environment",
+              urlPreview: "redis://localhost:6379"
+            }
+          ]
+        };
+      },
+      inspectResource,
+      async listNamespaces() {
+        return {
+          cursor: "0",
+          nodes: []
+        };
+      },
+      async listResources() {
+        return {
+          cursor: "0",
+          resources: []
+        };
+      },
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    });
+    const scope = fork();
+
+    await allSettled(model.events.appStarted, { scope });
+    await allSettled(model.events.resourceSelected, {
+      params: "user%3A1",
+      scope
+    });
+
+    expect(scope.getState(model.stores.$inspection)?.resource.ttlSeconds).toBe(5);
+
+    await allSettled(model.events.visibleDataRefreshed, { scope });
+
+    expect(scope.getState(model.stores.$inspection)?.resource.ttlSeconds).toBe(4);
+    expect(inspectResource).toHaveBeenCalledTimes(2);
+  });
 });
