@@ -1,9 +1,19 @@
 "use client";
 
 import {
-    createDatabaseModel,
-    databaseModel
-} from "@/features/database/model/database-model";
+    DatabaseApiProvider,
+    useConnectionsQuery,
+    useCreateConnectionMutation,
+    useDeleteConnectionMutation,
+    useInspectionQuery,
+    useMutateResourceMutation,
+    useNamespacesQuery,
+    useResourcesQuery
+} from "@/features/database/model/database-queries";
+import {
+    isNotFoundError,
+    shouldPurgeChangedResources
+} from "@/features/database/model/namespace-tree";
 import {
     forgetRememberedConnection,
     getRememberedConnectionsServerSnapshot,
@@ -12,17 +22,29 @@ import {
     subscribeRememberedConnections,
     type RememberedConnection
 } from "@/features/database/model/remembered-connections";
-import type {
-    DataPreview,
-    NamespaceNode,
-    ResourceDescriptor,
-    ResourceInspection
+import {
+    activeTabOf,
+    useWorkspace,
+    WorkspaceProvider
+} from "@/features/database/model/workspace";
+import {
+    databaseApi,
+    type DatabaseApi,
+    type DataPreview,
+    type MutationRequest,
+    type NamespaceNode,
+    type ResourceDescriptor,
+    type ResourceInspection
 } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
 import { FieldLabel, TextInput } from "@/shared/ui/field";
 import { LegacyLogo } from "@/shared/ui/legacy-logo";
+import {
+    QueryClient,
+    QueryClientProvider,
+    useQueryClient
+} from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { useUnit } from "effector-react";
 import {
     AlertTriangle,
     Archive,
@@ -40,7 +62,8 @@ import {
     RefreshCw,
     Search,
     Server,
-    Trash2
+    Trash2,
+    X
 } from "lucide-react";
 import {
     FormEvent,
@@ -49,49 +72,63 @@ import {
     useRef,
     useState,
     useSyncExternalStore,
+    type KeyboardEvent,
     type RefObject
 } from "react";
 
-type DatabaseModel = ReturnType<typeof createDatabaseModel>;
-
 interface DatabaseWorkbenchProps {
-  readonly model?: DatabaseModel;
+  readonly api?: DatabaseApi;
 }
 
-export function DatabaseWorkbench({
-  model = databaseModel
-}: DatabaseWorkbenchProps) {
-  const units = useUnit({
-    appStarted: model.events.appStarted,
-    connectionSelected: model.events.connectionSelected,
-    connections: model.stores.$connections,
-    createSessionConnection: model.effects.createSessionConnectionFx,
-    error: model.stores.$error,
-    inspection: model.stores.$inspection,
-    isConnecting: model.stores.$isConnecting,
-    isInspecting: model.stores.$isInspecting,
-    isLoadingConnections: model.stores.$isLoadingConnections,
-    isLoadingNamespaces: model.stores.$isLoadingNamespaces,
-    isLoadingResources: model.stores.$isLoadingResources,
-    isMutating: model.stores.$isMutating,
-    mutateResource: model.effects.mutateResourceFx,
-    namespaceNodes: model.stores.$namespaceNodes,
-    namespaceSelected: model.events.namespaceSelected,
-    resourceCursor: model.stores.$resourceCursor,
-    resourceSelected: model.events.resourceSelected,
-    resources: model.stores.$resources,
-    resourcesRefreshed: model.events.resourcesRefreshed,
-    search: model.stores.$search,
-    searchChanged: model.events.searchChanged,
-    selectedConnection: model.stores.$selectedConnection,
-    selectedConnectionId: model.stores.$selectedConnectionId,
-    selectedNamespacePath: model.stores.$selectedNamespacePath,
-    selectedResourceId: model.stores.$selectedResourceId,
-    visibleDataRefreshed: model.events.visibleDataRefreshed
-  });
+export function DatabaseWorkbench({ api = databaseApi }: DatabaseWorkbenchProps) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { refetchOnWindowFocus: false, retry: false }
+        }
+      })
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <DatabaseApiProvider value={api}>
+        <WorkspaceProvider>
+          <WorkbenchView />
+        </WorkspaceProvider>
+      </DatabaseApiProvider>
+    </QueryClientProvider>
+  );
+}
+
+function WorkbenchView() {
+  const { dispatch, state } = useWorkspace();
+  const queryClient = useQueryClient();
+
+  const activeTab = activeTabOf(state);
+  const activeConnectionId = activeTab?.id ?? null;
+  const namespacePath = activeTab?.namespacePath ?? EMPTY_PATH;
+  const search = activeTab?.search ?? "";
+  const searchDraft = activeTab?.searchDraft ?? "";
+  const selectedResourceId = activeTab?.selectedResourceId ?? null;
+
+  const connectionsQuery = useConnectionsQuery();
+  const namespacesQuery = useNamespacesQuery(activeConnectionId, namespacePath);
+  const resourcesQuery = useResourcesQuery(
+    activeConnectionId,
+    namespacePath,
+    search
+  );
+  const inspectionQuery = useInspectionQuery(
+    activeConnectionId,
+    selectedResourceId
+  );
+  const createConnection = useCreateConnectionMutation();
+  const deleteConnection = useDeleteConnectionMutation();
+  const mutateResource = useMutateResourceMutation(activeConnectionId);
+
   const [label, setLabel] = useState("Local Redis");
   const [url, setUrl] = useState("redis://localhost:6379");
-  const [searchDraft, setSearchDraft] = useState("");
   const [ttlDraft, setTtlDraft] = useState("300");
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const remembered = useSyncExternalStore(
@@ -99,42 +136,125 @@ export function DatabaseWorkbench({
     getRememberedConnectionsSnapshot,
     getRememberedConnectionsServerSnapshot
   );
-  const { appStarted, selectedConnectionId, visibleDataRefreshed } = units;
 
+  const connectionsData = connectionsQuery.data;
   useEffect(() => {
-    appStarted();
-  }, [appStarted]);
+    if (connectionsData) {
+      dispatch({
+        connections: connectionsData.connections,
+        type: "syncConnections"
+      });
+    }
+  }, [connectionsData, dispatch]);
 
+  const namespacesData = namespacesQuery.data;
   useEffect(() => {
-    if (!selectedConnectionId) {
+    if (namespacesData) {
+      dispatch({
+        nodes: namespacesData.nodes,
+        path: namespacePath,
+        type: "mergeNamespaces"
+      });
+    }
+  }, [namespacesData, namespacePath, dispatch]);
+
+  const inspectionError = inspectionQuery.error;
+  useEffect(() => {
+    if (!inspectionError || !isNotFoundError(inspectionError)) {
       return;
     }
 
-    const intervalId = window.setInterval(() => {
-      visibleDataRefreshed();
-    }, 1000);
+    if (selectedResourceId === null) {
+      return;
+    }
 
-    return () => window.clearInterval(intervalId);
-  }, [selectedConnectionId, visibleDataRefreshed]);
+    dispatch({ resourceIds: [selectedResourceId], type: "purgeResources" });
 
+    if (activeConnectionId !== null) {
+      void queryClient.invalidateQueries({
+        queryKey: ["resources", activeConnectionId]
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["namespaces", activeConnectionId]
+      });
+    }
+  }, [
+    inspectionError,
+    selectedResourceId,
+    activeConnectionId,
+    dispatch,
+    queryClient
+  ]);
+
+  const inspection = inspectionQuery.data ?? null;
+  const resourcesData = resourcesQuery.data?.resources;
   const visibleResources = useMemo(
-    () => units.resources.slice(0, 200),
-    [units.resources]
+    () => (resourcesData ?? []).slice(0, 200),
+    [resourcesData]
   );
   const selectedFolderLabel =
-    units.selectedNamespacePath.length > 0
-      ? units.selectedNamespacePath.join(" / ")
-      : "Root level records";
-  const selectedFolderKey = units.selectedNamespacePath.join(":");
+    namespacePath.length > 0 ? namespacePath.join(" / ") : "Root level records";
+  const selectedFolderKey = namespacePath.join(":");
   const emptyResourceMessage = getResourceEmptyMessage({
-    hasConnection: units.selectedConnectionId !== null,
-    hasSearch: units.search.trim().length > 0
+    hasConnection: activeConnectionId !== null,
+    hasSearch: search.trim().length > 0
   });
   const scanStatus =
-    units.resourceCursor === "0" ? "Scan complete" : "Scan partial";
-  const hasSelectedRecord = units.inspection !== null;
-  const recordEditorValue = formatPreviewForEditing(units.inspection?.value);
-  const valueDisplayLabel = describeValueDisplay(units.inspection?.value);
+    (resourcesQuery.data?.cursor ?? "0") === "0"
+      ? "Scan complete"
+      : "Scan partial";
+  const hasSelectedRecord = inspection !== null;
+  const recordEditorValue = formatPreviewForEditing(inspection?.value);
+  const valueDisplayLabel = describeValueDisplay(inspection?.value);
+
+  function refreshVisibleData() {
+    if (activeConnectionId === null) {
+      return;
+    }
+
+    void queryClient.invalidateQueries({
+      queryKey: ["resources", activeConnectionId]
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["namespaces", activeConnectionId]
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["inspection", activeConnectionId]
+    });
+  }
+
+  function setSearchDraft(value: string) {
+    dispatch({ type: "setSearchDraft", value });
+  }
+
+  const units = {
+    error: resolveErrorMessage([
+      connectionsQuery.error,
+      namespacesQuery.error,
+      resourcesQuery.error,
+      createConnection.error,
+      deleteConnection.error,
+      mutateResource.error,
+      inspectionError && !isNotFoundError(inspectionError)
+        ? inspectionError
+        : null
+    ]),
+    inspection,
+    isConnecting: createConnection.isPending,
+    isInspecting: inspectionQuery.isFetching,
+    isLoadingNamespaces: namespacesQuery.isFetching,
+    isLoadingResources: resourcesQuery.isLoading,
+    isMutating: mutateResource.isPending,
+    namespaceNodes: activeTab?.namespaceNodes ?? EMPTY_NODES,
+    namespaceSelected: (path: string[]) =>
+      dispatch({ path, type: "selectNamespace" }),
+    resourceSelected: (resourceId: string) =>
+      dispatch({ resourceId, type: "selectResource" }),
+    selectedConnectionId: activeConnectionId,
+    selectedNamespacePath: namespacePath,
+    selectedResourceId,
+    visibleDataRefreshed: refreshVisibleData
+  };
 
   function handleCreateConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -148,12 +268,17 @@ export function DatabaseWorkbench({
     readonly url: string;
   }) {
     try {
-      await units.createSessionConnection({
+      const result = await createConnection.mutateAsync({
         database: input.database,
         label: input.label,
         provider: "redis",
         tls: input.tls,
         url: input.url
+      });
+      dispatch({
+        id: result.connection.id,
+        label: result.connection.label,
+        type: "openTab"
       });
       rememberConnection({
         database: input.database,
@@ -163,7 +288,7 @@ export function DatabaseWorkbench({
         url: input.url
       });
     } catch {
-      // Connection failures are surfaced through units.error.
+      // Connection failures are surfaced through createConnection.error.
     }
   }
 
@@ -182,10 +307,37 @@ export function DatabaseWorkbench({
     forgetRememberedConnection(id);
   }
 
+  function handleCloseTab(id: string) {
+    dispatch({ id, type: "closeTab" });
+    deleteConnection.mutate(id);
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return;
+    }
+
+    if (state.tabs.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    const currentIndex = state.tabs.findIndex(
+      (tab) => tab.id === state.activeTabId
+    );
+    const delta = event.key === "ArrowRight" ? 1 : -1;
+    const nextIndex =
+      (currentIndex + delta + state.tabs.length) % state.tabs.length;
+    const nextTab = state.tabs[nextIndex];
+
+    if (nextTab) {
+      dispatch({ id: nextTab.id, type: "activateTab" });
+    }
+  }
+
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    units.searchChanged(searchDraft);
-    units.resourcesRefreshed();
+    dispatch({ type: "commitSearch", value: searchDraft });
   }
 
   function handleNamespaceNodeClick(node: NamespaceNode) {
@@ -203,25 +355,40 @@ export function DatabaseWorkbench({
     }
   }
 
-  function handleUpdate() {
-    if (!units.selectedConnectionId || !units.inspection) {
+  function runResourceMutation(mutation: MutationRequest) {
+    if (activeConnectionId === null) {
       return;
     }
 
-    void units.mutateResource({
-      connectionId: units.selectedConnectionId,
-      mutation: {
-        action: "update",
-        resourceId: units.inspection.resource.id,
-        value:
-          editorRef.current?.value ??
-          formatPreviewForEditing(units.inspection.value)
+    mutateResource.mutate(mutation, {
+      onSuccess: (result) => {
+        if (shouldPurgeChangedResources(mutation)) {
+          const purgedIds = mutation.resourceId
+            ? [mutation.resourceId, ...result.changedResourceIds]
+            : result.changedResourceIds;
+          dispatch({ resourceIds: purgedIds, type: "purgeResources" });
+        }
+
+        refreshVisibleData();
       }
     });
   }
 
+  function handleUpdate() {
+    if (activeConnectionId === null || !inspection) {
+      return;
+    }
+
+    runResourceMutation({
+      action: "update",
+      resourceId: inspection.resource.id,
+      value:
+        editorRef.current?.value ?? formatPreviewForEditing(inspection.value)
+    });
+  }
+
   function handleExpire() {
-    if (!units.selectedConnectionId || !units.inspection) {
+    if (activeConnectionId === null || !inspection) {
       return;
     }
 
@@ -231,35 +398,29 @@ export function DatabaseWorkbench({
       return;
     }
 
-    void units.mutateResource({
-      connectionId: units.selectedConnectionId,
-      mutation: {
-        action: "expire",
-        resourceId: units.inspection.resource.id,
-        ttlSeconds
-      }
+    runResourceMutation({
+      action: "expire",
+      resourceId: inspection.resource.id,
+      ttlSeconds
     });
   }
 
   function handleDelete() {
-    if (!units.selectedConnectionId || !units.inspection) {
+    if (activeConnectionId === null || !inspection) {
       return;
     }
 
     const confirmed = window.confirm(
-      `Delete Redis key "${units.inspection.resource.name}"?`
+      `Delete Redis key "${inspection.resource.name}"?`
     );
 
     if (!confirmed) {
       return;
     }
 
-    void units.mutateResource({
-      connectionId: units.selectedConnectionId,
-      mutation: {
-        action: "delete",
-        resourceId: units.inspection.resource.id
-      }
+    runResourceMutation({
+      action: "delete",
+      resourceId: inspection.resource.id
     });
   }
 
@@ -277,6 +438,62 @@ export function DatabaseWorkbench({
           Refresh
         </Button>
       </header>
+
+      {state.tabs.length > 0 ? (
+        <div
+          aria-label="Active connections"
+          className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-[#2C302C] bg-[var(--legacy-charcoal)] px-2"
+          onKeyDown={handleTabKeyDown}
+          role="tablist"
+          tabIndex={0}
+        >
+          {state.tabs.map((tab) => {
+            const isActive = tab.id === state.activeTabId;
+
+            return (
+              <div
+                className={clsx(
+                  "flex items-center gap-0.5 rounded-t-md px-1",
+                  isActive
+                    ? "bg-[var(--legacy-panel)]"
+                    : "hover:bg-[#1F2421]"
+                )}
+                key={tab.id}
+              >
+                <button
+                  aria-selected={isActive}
+                  className={clsx(
+                    "flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-sm",
+                    isActive
+                      ? "font-medium text-[var(--legacy-ink)]"
+                      : "text-[var(--legacy-concrete)]"
+                  )}
+                  onClick={() => dispatch({ id: tab.id, type: "activateTab" })}
+                  role="tab"
+                  type="button"
+                >
+                  <Database aria-hidden="true" size={14} />
+                  <span className="max-w-[160px] truncate">{tab.label}</span>
+                </button>
+                <button
+                  aria-label={`Disconnect ${tab.label}`}
+                  className={clsx(
+                    "rounded-md p-1",
+                    isActive
+                      ? "text-[#6F675C] hover:bg-[#E4D8C6] hover:text-[#7A2E22]"
+                      : "text-[var(--legacy-concrete)] hover:bg-[#2C302C]"
+                  )}
+                  onClick={() => handleCloseTab(tab.id)}
+                  title="Disconnect"
+                  type="button"
+                >
+                  <X aria-hidden="true" size={13} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       {units.error ? (
         <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
@@ -366,36 +583,7 @@ export function DatabaseWorkbench({
           </section>
 
           <section className="min-h-0 flex-1 overflow-y-auto p-3">
-            {units.isLoadingConnections ? (
-              <p className="px-2 py-3 text-sm text-[#6F675C]">Loading connections</p>
-            ) : null}
-            <div className="space-y-1">
-              {units.connections.map((connection) => (
-                <button
-                  className={clsx(
-                    "flex w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm transition",
-                    units.selectedConnectionId === connection.id
-                      ? "border border-[#D7A077] bg-[#F2DCCB] text-[#58301A]"
-                      : "border border-transparent hover:bg-[#ECE3D6]"
-                  )}
-                  key={connection.id}
-                  onClick={() => units.connectionSelected(connection.id)}
-                  type="button"
-                >
-                  <Database aria-hidden="true" className="mt-0.5" size={15} />
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">
-                      {connection.label}
-                    </span>
-                    <span className="block truncate text-xs text-[#6F675C]">
-                      {connection.urlPreview}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-5 flex items-center justify-between px-2">
+            <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <Archive aria-hidden="true" size={16} />
                 Folders
@@ -562,7 +750,7 @@ export function DatabaseWorkbench({
             <div className="min-w-0">
               <h2 className="truncate text-sm font-semibold">Record Inspector</h2>
               <p className="truncate text-xs text-[#6F675C]">
-                {units.selectedConnection?.label ?? "No connection selected"}
+                {activeTab?.label ?? "No connection selected"}
               </p>
             </div>
           </div>
@@ -930,4 +1118,18 @@ function getResourceEmptyMessage(input: {
   }
 
   return "Folder is empty";
+}
+
+const EMPTY_PATH: string[] = [];
+
+const EMPTY_NODES: NamespaceNode[] = [];
+
+function resolveErrorMessage(errors: ReadonlyArray<unknown>): string | null {
+  for (const candidate of errors) {
+    if (candidate instanceof Error && candidate.message) {
+      return candidate.message;
+    }
+  }
+
+  return null;
 }

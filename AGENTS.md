@@ -37,7 +37,9 @@ Do not replace pnpm with npm or yarn.
 - Keep Redis-specific behavior inside the Redis adapter and helper modules.
 - API routes under `src/app/api` must return provider-agnostic DTOs.
 - Frontend code must call shared API client functions, not provider clients.
-- Effector models own UI state transitions.
+- TanStack Query owns server-state (connections, namespaces, resources,
+  inspection) with liveness via `refetchInterval`; a React reducer/context owns
+  per-tab UI state.
 - UI components should remain clear, dense, and operational rather than
   marketing-oriented.
 

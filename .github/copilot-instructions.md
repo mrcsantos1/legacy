@@ -8,7 +8,7 @@ Use these project defaults:
 - Framework: Next.js 16 App Router
 - Language: strict TypeScript
 - Styling: Tailwind CSS
-- State management: Effector
+- State management: TanStack Query (server state) + React reducer/context (UI state)
 - Tests: Vitest and Testing Library
 - Infrastructure: Docker
 

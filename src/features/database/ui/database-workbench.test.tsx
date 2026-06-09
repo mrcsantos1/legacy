@@ -2,12 +2,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { createDatabaseModel } from "../model/database-model";
+import type { DatabaseApi } from "@/shared/api/client";
+
 import { DatabaseWorkbench } from "./database-workbench";
 
 describe("DatabaseWorkbench", () => {
   it("renders connections, resource grid, and selected resource inspector", async () => {
-    const model = createDatabaseModel({
+    const api: DatabaseApi = {
       async createSessionConnection() {
         throw new Error("not used");
       },
@@ -83,9 +84,9 @@ describe("DatabaseWorkbench", () => {
           status: "success"
         };
       }
-    });
+    };
 
-    render(<DatabaseWorkbench model={model} />);
+    render(<DatabaseWorkbench api={api} />);
 
     expect(await screen.findByLabelText("Legacy home")).toBeInTheDocument();
     expect(await screen.findByText("Folders")).toBeInTheDocument();
@@ -101,7 +102,7 @@ describe("DatabaseWorkbench", () => {
   });
 
   it("opens a leaf record from the folder tree in the central record view", async () => {
-    const model = createDatabaseModel({
+    const api: DatabaseApi = {
       async createSessionConnection() {
         throw new Error("not used");
       },
@@ -168,9 +169,9 @@ describe("DatabaseWorkbench", () => {
           status: "success"
         };
       }
-    });
+    };
 
-    render(<DatabaseWorkbench model={model} />);
+    render(<DatabaseWorkbench api={api} />);
 
     const recordNode = await screen.findByRole("button", {
       name: "Open record app-api:context:019595c5"
@@ -187,6 +188,7 @@ describe("DatabaseWorkbench", () => {
   });
 
   it("removes a stale tree record when opening it reports NotFoundError", async () => {
+    let listNamespacesCalls = 0;
     const listNamespaces = async () => ({
       cursor: "0",
       nodes:
@@ -204,8 +206,7 @@ describe("DatabaseWorkbench", () => {
             ]
           : []
     });
-    let listNamespacesCalls = 0;
-    const model = createDatabaseModel({
+    const api: DatabaseApi = {
       async createSessionConnection() {
         throw new Error("not used");
       },
@@ -243,9 +244,9 @@ describe("DatabaseWorkbench", () => {
           status: "success"
         };
       }
-    });
+    };
 
-    render(<DatabaseWorkbench model={model} />);
+    render(<DatabaseWorkbench api={api} />);
 
     const staleNode = await screen.findByRole("button", {
       name: "Open record user:ghost"
@@ -297,7 +298,7 @@ describe("DatabaseWorkbench", () => {
           value: "Ada"
         }
       });
-    const model = createDatabaseModel({
+    const api: DatabaseApi = {
       async createSessionConnection() {
         throw new Error("not used");
       },
@@ -343,18 +344,21 @@ describe("DatabaseWorkbench", () => {
       async mutateResource() {
         throw new Error("not used");
       }
-    });
+    };
 
-    render(<DatabaseWorkbench model={model} />);
+    render(<DatabaseWorkbench api={api} />);
 
     const row = await screen.findByRole("button", { name: /inspect user:1/i });
     await userEvent.click(row);
 
     expect(await screen.findAllByText("5s")).toHaveLength(2);
 
-    await waitFor(() => {
-      expect(screen.getAllByText("4s")).toHaveLength(2);
-    }, { timeout: 2000 });
+    await waitFor(
+      () => {
+        expect(screen.getAllByText("4s")).toHaveLength(2);
+      },
+      { timeout: 2000 }
+    );
     expect(screen.queryByText("Loading resource")).not.toBeInTheDocument();
     expect(inspectResource).toHaveBeenCalledTimes(2);
   });
@@ -375,7 +379,7 @@ describe("DatabaseWorkbench", () => {
         }
       ]
     }));
-    const model = createDatabaseModel({
+    const api: DatabaseApi = {
       async createSessionConnection() {
         throw new Error("not used");
       },
@@ -408,15 +412,18 @@ describe("DatabaseWorkbench", () => {
       async mutateResource() {
         throw new Error("not used");
       }
-    });
+    };
 
-    render(<DatabaseWorkbench model={model} />);
+    render(<DatabaseWorkbench api={api} />);
 
     expect(await screen.findByText("5s")).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getByText("4s")).toBeInTheDocument();
-    }, { timeout: 2000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText("4s")).toBeInTheDocument();
+      },
+      { timeout: 2000 }
+    );
     expect(listResources).toHaveBeenCalledTimes(2);
   });
 });

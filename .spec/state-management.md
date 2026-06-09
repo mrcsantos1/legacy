@@ -1,6 +1,6 @@
 # State Management
 
-Status: Decision — Wave 4 (decide before the UI rewrite)
+Status: Implemented — Wave 3 (Effector removed)
 
 ## Current
 
@@ -43,12 +43,17 @@ hand-written samples. Note: supersedes the Effector project default for V1.
   Mitigation: land it inside the Wave 3/5 rewrite, keep tests green per step.
 - Reversible: client-only change; the provider-agnostic API/server is untouched.
 
-## Follow-up (implementation steps)
+## Follow-up (as implemented)
 
-- Add `@tanstack/react-query` + a provider in `app/layout.tsx`.
-- Wrap `client.ts` calls in query/mutation hooks under `features/database/model/`.
-- Move UI state into a workspace reducer/context (enables tabs — see workspace-tabs.md).
-- Port tests; delete Effector stores/deps once parity is reached.
+- `database-queries.ts`: TanStack hooks over `client.ts`, keyed by
+  `[connectionId, …]`; liveness via `refetchInterval`; `DatabaseApiProvider`
+  injects the API for tests.
+- `workspace.tsx`: `useReducer` + Context owns per-tab UI state (tabs, namespace
+  path, search draft, selection); see workspace-tabs.md.
+- `namespace-tree.ts`: pure helpers (merge, scope, ghost purge, NotFound).
+- `QueryClientProvider` is colocated in the `DatabaseWorkbench` shell (single
+  consumer; keeps `layout.tsx` plain and the workbench testable via `api` prop).
+- Effector stores/deps deleted once parity (ghost purge, live TTL) was green.
 
 ## Verify
 
