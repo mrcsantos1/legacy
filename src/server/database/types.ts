@@ -99,29 +99,47 @@ export interface ResourceListResult {
   readonly resources: ResourceDescriptor[];
 }
 
+export interface DataPreviewMeta {
+  readonly truncated: boolean;
+  readonly itemCount?: number;
+  readonly byteSize?: number;
+  readonly cursor?: string;
+  readonly displayHint?: "text" | "json" | "list" | "table";
+}
+
 export type DataPreview =
   | {
       readonly encoding: "utf8";
       readonly kind: "scalar";
       readonly value: string | null;
+      readonly meta?: DataPreviewMeta;
     }
   | {
       readonly kind: "object";
       readonly value: Record<string, string>;
+      readonly meta?: DataPreviewMeta;
     }
   | {
       readonly kind: "list";
       readonly length?: number;
       readonly value: string[];
+      readonly meta?: DataPreviewMeta;
     }
   | {
       readonly kind: "zset";
       readonly value: Array<{ readonly score: number; readonly value: string }>;
+      readonly meta?: DataPreviewMeta;
     }
   | {
       readonly kind: "unsupported";
       readonly message: string;
     };
+
+export interface ResourceInspectionQuery {
+  readonly bytes?: number;
+  readonly cursor?: string;
+  readonly limit?: number;
+}
 
 export interface ResourceInspection {
   readonly metadata: Record<string, unknown>;
@@ -156,7 +174,8 @@ export interface DatabaseAdapter {
   readonly capabilities: AdapterCapabilities;
   inspectResource(
     config: ConnectionConfig,
-    resourceId: string
+    resourceId: string,
+    query?: ResourceInspectionQuery
   ): Promise<ResourceInspection>;
   listNamespaces(
     config: ConnectionConfig,

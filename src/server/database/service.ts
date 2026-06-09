@@ -3,14 +3,21 @@ import type {
   ConnectionConfig,
   MutationRequest,
   NamespaceListQuery,
+  ResourceInspectionQuery,
   ResourceListQuery
 } from "./types";
 
 export class DatabaseService {
   constructor(private readonly registry: AdapterRegistry) {}
 
-  inspectResource(config: ConnectionConfig, resourceId: string) {
-    return this.registry.getAdapter(config.provider).inspectResource(config, resourceId);
+  inspectResource(
+    config: ConnectionConfig,
+    resourceId: string,
+    query?: ResourceInspectionQuery
+  ) {
+    return this.registry
+      .getAdapter(config.provider)
+      .inspectResource(config, resourceId, query);
   }
 
   listNamespaces(config: ConnectionConfig, query: NamespaceListQuery) {

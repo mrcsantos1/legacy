@@ -10,6 +10,7 @@ import type {
   NamespaceListQuery,
   ResourceDescriptor,
   ResourceInspection,
+  ResourceInspectionQuery,
   ResourceListQuery
 } from "../types";
 import {
@@ -26,20 +27,35 @@ interface RedisClientLike {
   exists(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<boolean | number>;
   get(key: string): Promise<string | null>;
+  getRange(key: string, start: number, end: number): Promise<string>;
   hGetAll(key: string): Promise<Record<string, string>>;
+  hLen(key: string): Promise<number>;
+  hScan(
+    key: string,
+    cursor: string,
+    options?: { COUNT?: number; MATCH?: string }
+  ): Promise<{ cursor: number | string; entries: Array<{ field: string; value: string }> }>;
   info(section?: string): Promise<string>;
   lLen(key: string): Promise<number>;
   lRange(key: string, start: number, stop: number): Promise<string[]>;
   ping(): Promise<string>;
   rename(key: string, newKey: string): Promise<string>;
+  sCard(key: string): Promise<number>;
   sMembers(key: string): Promise<string[]>;
+  sScan(
+    key: string,
+    cursor: string,
+    options?: { COUNT?: number; MATCH?: string }
+  ): Promise<{ cursor: number | string; members: string[] }>;
   scan(
     cursor: string,
     options: { COUNT: number; MATCH: string; TYPE?: string }
   ): Promise<{ cursor: number | string; keys: string[] }>;
   set(key: string, value: string): Promise<string | null>;
+  strLen(key: string): Promise<number>;
   ttl(key: string): Promise<number>;
   type(key: string): Promise<string>;
+  zCard(key: string): Promise<number>;
   zRangeWithScores(
     key: string,
     start: number,
@@ -49,6 +65,10 @@ interface RedisClientLike {
 
 const DEFAULT_DELIMITER = ":";
 const DEFAULT_SCAN_COUNT = 100;
+const DEFAULT_PREVIEW_LIMIT = 100;
+const MAX_PREVIEW_LIMIT = 1000;
+const DEFAULT_PREVIEW_BYTES = 64 * 1024;
+const MAX_PREVIEW_BYTES = 1024 * 1024;
 
 export class RedisAdapter implements DatabaseAdapter {
   readonly capabilities = {
@@ -67,7 +87,8 @@ export class RedisAdapter implements DatabaseAdapter {
 
   async inspectResource(
     config: ConnectionConfig,
-    resourceId: string
+    resourceId: string,
+    query?: ResourceInspectionQuery
   ): Promise<ResourceInspection> {
     return this.withClient(config, async (client) => {
       const key = decodeResourceId(resourceId);
@@ -82,7 +103,7 @@ export class RedisAdapter implements DatabaseAdapter {
         throw new NotFoundError(`Redis key not found: ${key}`);
       }
 
-      const value = await this.readValue(client, key, resource.type);
+      const value = await this.readValue(client, key, resource.type, query);
 
       return {
         metadata: {
@@ -261,36 +282,102 @@ export class RedisAdapter implements DatabaseAdapter {
   private async readValue(
     client: RedisClientLike,
     key: string,
-    type: string
+    type: string,
+    query?: ResourceInspectionQuery
   ): Promise<DataPreview> {
+    const limit = clamp(
+      query?.limit ?? DEFAULT_PREVIEW_LIMIT,
+      1,
+      MAX_PREVIEW_LIMIT
+    );
+    const bytes = clamp(
+      query?.bytes ?? DEFAULT_PREVIEW_BYTES,
+      1,
+      MAX_PREVIEW_BYTES
+    );
+    const startCursor = query?.cursor ?? "0";
+
     switch (type) {
-      case "string":
+      case "string": {
+        const byteSize = await client.strLen(key);
+        const value =
+          byteSize === 0 ? "" : await client.getRange(key, 0, bytes - 1);
         return {
           encoding: "utf8",
           kind: "scalar",
-          value: await client.get(key)
+          meta: {
+            byteSize,
+            displayHint: "text",
+            truncated: byteSize > bytes
+          },
+          value
         };
-      case "hash":
+      }
+      case "hash": {
+        const itemCount = await client.hLen(key);
+        const result = await client.hScan(key, startCursor, { COUNT: limit });
+        const value: Record<string, string> = {};
+        for (const entry of result.entries.slice(0, limit)) {
+          value[entry.field] = entry.value;
+        }
+        const nextCursor = String(result.cursor);
+        const done = nextCursor === "0";
         return {
           kind: "object",
-          value: await client.hGetAll(key)
+          meta: {
+            cursor: done ? undefined : nextCursor,
+            displayHint: "json",
+            itemCount,
+            truncated: !done || itemCount > Object.keys(value).length
+          },
+          value
         };
-      case "list":
+      }
+      case "list": {
+        const itemCount = await client.lLen(key);
+        const value = await client.lRange(key, 0, limit - 1);
         return {
           kind: "list",
-          length: await client.lLen(key),
-          value: await client.lRange(key, 0, 99)
+          length: itemCount,
+          meta: {
+            displayHint: "list",
+            itemCount,
+            truncated: itemCount > value.length
+          },
+          value
         };
-      case "set":
+      }
+      case "set": {
+        const itemCount = await client.sCard(key);
+        const result = await client.sScan(key, startCursor, { COUNT: limit });
+        const value = result.members.slice(0, limit);
+        const nextCursor = String(result.cursor);
+        const done = nextCursor === "0";
         return {
           kind: "list",
-          value: await client.sMembers(key)
+          length: itemCount,
+          meta: {
+            cursor: done ? undefined : nextCursor,
+            displayHint: "list",
+            itemCount,
+            truncated: !done || itemCount > value.length
+          },
+          value
         };
-      case "zset":
+      }
+      case "zset": {
+        const itemCount = await client.zCard(key);
+        const value = await client.zRangeWithScores(key, 0, limit - 1);
         return {
           kind: "zset",
-          value: await client.zRangeWithScores(key, 0, 99)
+          meta: {
+            displayHint: "table",
+            itemCount,
+            truncated: itemCount > value.length
+          },
+          value
         };
+      }
       default:
         return {
           kind: "unsupported",
@@ -393,4 +480,12 @@ function isResourceDescriptor(
   resource: ResourceDescriptor | null
 ): resource is ResourceDescriptor {
   return resource !== null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.min(Math.max(Math.trunc(value), min), max);
 }
