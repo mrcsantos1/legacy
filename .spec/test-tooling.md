@@ -11,14 +11,14 @@ Status: Required — Wave 8
 
 - Remove any real Vite app files if present: `index.html`, `src/main.tsx`,
   `vite.config.*`, Vite-only env/scripts. (Audit found none.)
-- Decide if `@vitejs/plugin-react` is needed for the React Vitest transform.
-  - If removable: update `vitest.config.mts`, `package.json`, lockfile via pnpm.
-  - If not: document that it stays because the React test transform needs it.
+- `@vitejs/plugin-react` is removed: Vitest transforms `.tsx` via esbuild using
+  `tsconfig` `jsx: react-jsx`. All React tests pass without it. `vitest.config.mts`
+  uses no plugins; the dependency and its lockfile entries are pruned via pnpm.
 
 ## Acceptance
 
 - No Vite app scaffold remains.
-- Tests still run.
+- Tests still run (25/25 green without the plugin).
 - The dependency decision is documented.
 
 ## Verify
