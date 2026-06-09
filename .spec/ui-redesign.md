@@ -1,6 +1,6 @@
 # UI Redesign
 
-Status: Required — Wave 5
+Status: Implemented — Wave 5
 
 ## Contract
 
@@ -37,3 +37,38 @@ value-viewer · inspector · shared status/empty states.
 ## Verify
 
 typecheck · lint · test · build · browser screenshots (desktop + narrow)
+
+## As implemented (Wave 5)
+
+- The 917-line workbench was split into focused modules under
+  `features/database/ui`: `tab-strip` (`ConnectionTabStrip`),
+  `connection-drawer` (`ConnectionDrawer`), `namespace-tree` (`NamespaceTree`,
+  UI tree distinct from the `model/namespace-tree` logic), `resource-grid`
+  (`ResourceGrid`), `value-viewer` (`ValueViewer`), `inspector`
+  (`InspectorPanel`), and `workbench-states` (`ErrorBanner`, `EmptyState`,
+  `SkeletonRows`, `CollapsedRail`). Pure formatting helpers moved to
+  `value-format.ts`. `database-workbench.tsx` is now a slim shell (~620 lines).
+- Viewport lock via `<main className="flex h-dvh flex-col overflow-hidden">`;
+  the body never scrolls. The panel row is flex with `min-h-0`/`min-w-0` and
+  `overflow-hidden`, so the tree, resource grid, value viewer, and inspector
+  each scroll independently. `min-w-0` on the center keeps the inspector
+  on-screen at narrow widths (no page-level horizontal scroll at ~820px).
+- Side panels collapse to a labeled vertical `CollapsedRail` (component swap,
+  not an animated accordion) with `Collapse/Expand Workspace` and
+  `Collapse/Expand Inspector` controls; collapsed/expanded states never overlap
+  content.
+- Smooth loading: `SkeletonRows` for the initial grid load, `opacity-60` while
+  refreshing, a non-blocking header refresh spinner; the workbench is never
+  blanked.
+- `ValueViewer` provides Edit / Pretty toggle, Format (re-indent JSON), and
+  Copy actions, a "Detected JSON string" badge, and preview-metadata facts
+  (item count, byte size, truncation) from `describePreviewMeta`.
+- Icon-only and ambiguous controls carry `title` tooltips (collapse, refresh,
+  TTL/Expire, Save, Delete, tab close); text truncates rather than overflowing.
+
+### Deferred
+
+- True mobile stacking (single-column layout below a breakpoint) is out of
+  scope; narrow widths rely on `min-w-0` fit plus manual panel collapse.
+- Collapse is an instant component swap rather than an animated accordion.
+- Table/list rendering for object/list/zset previews remains a Wave 6 concern.

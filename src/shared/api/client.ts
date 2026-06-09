@@ -1,15 +1,16 @@
 import type {
-  ConnectionSummary,
-  DataPreview,
-  MutationRequest,
-  NamespaceListResult,
-  NamespaceNode,
-  NewConnectionInput,
-  OperationResult,
-  ResourceDescriptor,
-  ResourceInspection,
-  ResourceListScope,
-  ResourceListResult
+    ConnectionSummary,
+    DataPreview,
+    DataPreviewMeta,
+    MutationRequest,
+    NamespaceListResult,
+    NamespaceNode,
+    NewConnectionInput,
+    OperationResult,
+    ResourceDescriptor,
+    ResourceInspection,
+    ResourceListResult,
+    ResourceListScope
 } from "@/server/database/types";
 
 export interface ConnectionsResponse {
@@ -49,17 +50,18 @@ export interface DatabaseApi {
 }
 
 export type {
-  ConnectionSummary,
-  DataPreview,
-  MutationRequest,
-  NamespaceListResult,
-  NamespaceNode,
-  NewConnectionInput,
-  OperationResult,
-  ResourceDescriptor,
-  ResourceInspection,
-  ResourceListScope,
-  ResourceListResult
+    ConnectionSummary,
+    DataPreview,
+    DataPreviewMeta,
+    MutationRequest,
+    NamespaceListResult,
+    NamespaceNode,
+    NewConnectionInput,
+    OperationResult,
+    ResourceDescriptor,
+    ResourceInspection,
+    ResourceListResult,
+    ResourceListScope
 };
 
 export async function getConnections(): Promise<ConnectionsResponse> {

@@ -1,0 +1,140 @@
+import type { DataPreview, DataPreviewMeta } from "@/shared/api/client";
+
+export function formatPreviewForEditing(value: DataPreview | undefined): string {
+  if (!value) {
+    return "";
+  }
+
+  switch (value.kind) {
+    case "scalar":
+      return formatScalarForEditing(value.value);
+    case "object":
+      return JSON.stringify(value.value, null, 2);
+    case "list":
+      return JSON.stringify(value.value, null, 2);
+    case "zset":
+      return JSON.stringify(value.value, null, 2);
+    case "unsupported":
+      return value.message;
+  }
+}
+
+export function formatScalarForEditing(value: string | null): string {
+  if (value === null) {
+    return "";
+  }
+
+  const parsedJson = tryParseJson(value);
+
+  if (parsedJson !== null) {
+    return JSON.stringify(parsedJson, null, 2);
+  }
+
+  return value;
+}
+
+export function describeValueDisplay(value: DataPreview | undefined): string {
+  if (!value) {
+    return "No value selected";
+  }
+
+  switch (value.kind) {
+    case "scalar":
+      return tryParseJson(value.value) !== null
+        ? "Detected JSON string"
+        : "Raw string";
+    case "object":
+      return "Redis hash object";
+    case "list":
+      return "Redis list/set";
+    case "zset":
+      return "Redis sorted set";
+    case "unsupported":
+      return "Unsupported preview";
+  }
+}
+
+export function tryParseJson(value: string | null): unknown | null {
+  if (value === null) {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue.startsWith("{") && !trimmedValue.startsWith("[")) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmedValue) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+export function formatTtl(ttlSeconds: number | undefined): string {
+  if (ttlSeconds === undefined) {
+    return "-";
+  }
+
+  if (ttlSeconds < 0) {
+    return "persistent";
+  }
+
+  return `${ttlSeconds}s`;
+}
+
+export function getResourceEmptyMessage(input: {
+  readonly hasConnection: boolean;
+  readonly hasSearch: boolean;
+}): string {
+  if (!input.hasConnection) {
+    return "No connection selected";
+  }
+
+  if (input.hasSearch) {
+    return "No matching records";
+  }
+
+  return "Folder is empty";
+}
+
+export function previewMetaOf(
+  value: DataPreview | undefined
+): DataPreviewMeta | undefined {
+  if (!value || value.kind === "unsupported") {
+    return undefined;
+  }
+
+  return value.meta;
+}
+
+export function formatByteSize(byteSize: number): string {
+  if (byteSize < 1024) {
+    return `${byteSize} B`;
+  }
+
+  if (byteSize < 1024 * 1024) {
+    return `${(byteSize / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(byteSize / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function describePreviewMeta(meta: DataPreviewMeta): string[] {
+  const facts: string[] = [];
+
+  if (meta.itemCount !== undefined) {
+    facts.push(`${meta.itemCount} items`);
+  }
+
+  if (meta.byteSize !== undefined) {
+    facts.push(formatByteSize(meta.byteSize));
+  }
+
+  if (meta.truncated) {
+    facts.push("preview truncated");
+  }
+
+  return facts;
+}
