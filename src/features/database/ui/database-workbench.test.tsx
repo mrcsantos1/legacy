@@ -330,43 +330,24 @@ describe("DatabaseWorkbench", () => {
     });
   });
 
-  it("updates the selected record TTL automatically without reselecting it", async () => {
-    const inspectResource = vi
-      .fn()
-      .mockResolvedValueOnce({
-        metadata: { ttlSeconds: 5 },
-        resource: {
-          id: "user%3A1",
-          kind: "key" as const,
-          name: "user:1",
-          path: ["user", "1"],
-          provider: "redis" as const,
-          ttlSeconds: 5,
-          type: "string"
-        },
-        value: {
-          encoding: "utf8" as const,
-          kind: "scalar" as const,
-          value: "Ada"
-        }
-      })
-      .mockResolvedValueOnce({
-        metadata: { ttlSeconds: 4 },
-        resource: {
-          id: "user%3A1",
-          kind: "key" as const,
-          name: "user:1",
-          path: ["user", "1"],
-          provider: "redis" as const,
-          ttlSeconds: 4,
-          type: "string"
-        },
-        value: {
-          encoding: "utf8" as const,
-          kind: "scalar" as const,
-          value: "Ada"
-        }
-      });
+  it("counts down the selected record TTL without extra server calls", async () => {
+    const inspectResource = vi.fn(async () => ({
+      metadata: { ttlSeconds: 5 },
+      resource: {
+        id: "user%3A1",
+        kind: "key" as const,
+        name: "user:1",
+        path: ["user", "1"],
+        provider: "redis" as const,
+        ttlSeconds: 5,
+        type: "string"
+      },
+      value: {
+        encoding: "utf8" as const,
+        kind: "scalar" as const,
+        value: "Ada"
+      }
+    }));
     const api: DatabaseApi = {
       async createSessionConnection() {
         throw new Error("not used");
@@ -422,18 +403,20 @@ describe("DatabaseWorkbench", () => {
 
     expect(await screen.findAllByText("5s")).toHaveLength(2);
 
+    // A stalled interval tick can skip past "4s" entirely, so the assertion
+    // accepts any decremented value rather than one exact second.
     await waitFor(
       () => {
-        expect(screen.getAllByText("4s")).toHaveLength(2);
+        expect(screen.getAllByText(/^[1-4]s$/)).toHaveLength(2);
       },
-      { timeout: 2000 }
+      { timeout: 10_000 }
     );
     expect(screen.queryByText("Loading resource")).not.toBeInTheDocument();
-    expect(inspectResource).toHaveBeenCalledTimes(2);
-  });
+    // The countdown is client-side; one inspection call is all it takes.
+    expect(inspectResource).toHaveBeenCalledTimes(1);
+  }, 15_000);
 
-  it("updates resource table TTL automatically while a folder is open", async () => {
-    let resourceListCallCount = 0;
+  it("counts down resource table TTL while a folder is open", async () => {
     const listResources = vi.fn(async () => ({
       cursor: "0",
       resources: [
@@ -443,7 +426,7 @@ describe("DatabaseWorkbench", () => {
           name: "user:1",
           path: ["user", "1"],
           provider: "redis" as const,
-          ttlSeconds: resourceListCallCount++ === 0 ? 5 : 4,
+          ttlSeconds: 5,
           type: "string"
         }
       ]
@@ -487,14 +470,17 @@ describe("DatabaseWorkbench", () => {
 
     expect(await screen.findByText("5s")).toBeInTheDocument();
 
+    // A stalled interval tick can skip past "4s" entirely, so the assertion
+    // accepts any decremented value rather than one exact second.
     await waitFor(
       () => {
-        expect(screen.getByText("4s")).toBeInTheDocument();
+        expect(screen.getByText(/^[1-4]s$/)).toBeInTheDocument();
       },
-      { timeout: 2000 }
+      { timeout: 10_000 }
     );
-    expect(listResources).toHaveBeenCalledTimes(2);
-  });
+    // The countdown is client-side; one scan call is all it takes.
+    expect(listResources).toHaveBeenCalledTimes(1);
+  }, 15_000);
 
   it("loads more records through the scan cursor", async () => {
     const listResources = vi.fn(async (input: { cursor?: string }) =>

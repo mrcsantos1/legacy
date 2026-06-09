@@ -18,7 +18,9 @@ import {
 
 import { resourceScopeForSearch } from "./namespace-tree";
 
-export const LIVENESS_INTERVAL_MS = 1000;
+// Bounded background reconciliation with the server. Per-second TTL countdown
+// happens client-side (see model/ttl.ts); it must never trigger requests.
+export const LIVENESS_INTERVAL_MS = 10_000;
 
 export const PREVIEW_LIMIT_STEP = 100;
 export const PREVIEW_BYTES_STEP = 64 * 1024;

@@ -43,6 +43,7 @@ function renderViewer(input: {
       inspection={input.inspection}
       isLoadingMore={false}
       onLoadMore={input.onLoadMore ?? (() => undefined)}
+      ttlObservedAtMs={Date.now()}
       valueDisplayLabel="Detected JSON string"
     />
   );

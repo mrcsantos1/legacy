@@ -4,7 +4,7 @@ import { Button } from "@/shared/ui/button";
 import { TextInput } from "@/shared/ui/field";
 import { Clock, KeyRound, Pencil, Trash2 } from "lucide-react";
 
-import { formatTtl } from "./value-format";
+import { LiveTtlBadge } from "./ttl-badge";
 import { EmptyState } from "./workbench-states";
 
 interface InspectorPanelProps {
@@ -16,6 +16,7 @@ interface InspectorPanelProps {
   readonly onTtlChange: (value: string) => void;
   readonly onUpdate: () => void;
   readonly ttlDraft: string;
+  readonly ttlObservedAtMs: number;
 }
 
 export function InspectorPanel({
@@ -26,7 +27,8 @@ export function InspectorPanel({
   onExpire,
   onTtlChange,
   onUpdate,
-  ttlDraft
+  ttlDraft,
+  ttlObservedAtMs
 }: InspectorPanelProps) {
   if (isInspecting && !inspection) {
     return <div className="p-4 text-sm text-[#6F675C]">Loading resource</div>;
@@ -51,7 +53,10 @@ export function InspectorPanel({
         <div className="flex items-center gap-3 text-xs text-[#6F675C]">
           <span>{inspection.resource.type}</span>
           <span>{inspection.resource.provider}</span>
-          <span>{formatTtl(inspection.resource.ttlSeconds)}</span>
+          <LiveTtlBadge
+            observedAtMs={ttlObservedAtMs}
+            ttlSeconds={inspection.resource.ttlSeconds}
+          />
         </div>
       </div>
 

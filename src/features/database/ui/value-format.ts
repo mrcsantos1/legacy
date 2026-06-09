@@ -60,18 +60,6 @@ export function tryParseJson(value: string | null): unknown | null {
   }
 }
 
-export function formatTtl(ttlSeconds: number | undefined): string {
-  if (ttlSeconds === undefined) {
-    return "-";
-  }
-
-  if (ttlSeconds < 0) {
-    return "persistent";
-  }
-
-  return `${ttlSeconds}s`;
-}
-
 export function getResourceEmptyMessage(input: {
   readonly hasConnection: boolean;
   readonly hasSearch: boolean;

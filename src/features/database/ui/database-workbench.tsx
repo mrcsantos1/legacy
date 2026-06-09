@@ -231,6 +231,34 @@ function WorkbenchView() {
     resourcesQuery.isFetching &&
     !resourcesQuery.isFetchingNextPage &&
     visibleResources.length > 0;
+  // dataUpdatedAt is 0 while placeholder data is shown; falling back to "now"
+  // keeps the client-side TTL countdown sane during that brief window.
+  const inspectionObservedAtMs = inspectionQuery.dataUpdatedAt || Date.now();
+  const resourcesObservedAtMs = resourcesQuery.dataUpdatedAt || Date.now();
+
+  const inspectionTtlSeconds = inspection?.resource.ttlSeconds;
+  const inspectionRefetch = inspectionQuery.refetch;
+  useEffect(() => {
+    if (
+      inspectionTtlSeconds === undefined ||
+      inspectionTtlSeconds < 0 ||
+      inspectionObservedAtMs <= 0
+    ) {
+      return;
+    }
+
+    // Reconcile once right after the locally projected expiry so the server
+    // can confirm the key is gone (NotFoundError feeds the stale-key purge).
+    const delayMs = Math.max(
+      0,
+      inspectionObservedAtMs + inspectionTtlSeconds * 1000 - Date.now() + 250
+    );
+    const id = window.setTimeout(() => {
+      void inspectionRefetch();
+    }, delayMs);
+
+    return () => window.clearTimeout(id);
+  }, [inspectionTtlSeconds, inspectionObservedAtMs, inspectionRefetch]);
 
   function refreshVisibleData() {
     if (activeConnectionId === null) {
@@ -603,6 +631,7 @@ function WorkbenchView() {
                 onLoadMore={() =>
                   dispatch({ page: previewPage + 1, type: "setPreviewPage" })
                 }
+                ttlObservedAtMs={inspectionObservedAtMs}
                 valueDisplayLabel={valueDisplayLabel}
               />
             ) : (
@@ -616,6 +645,7 @@ function WorkbenchView() {
                 onResourceSelected={units.resourceSelected}
                 resources={visibleResources}
                 selectedResourceId={units.selectedResourceId}
+                ttlObservedAtMs={resourcesObservedAtMs}
               />
             )}
           </div>
@@ -659,6 +689,7 @@ function WorkbenchView() {
               onTtlChange={setTtlDraft}
               onUpdate={handleUpdate}
               ttlDraft={ttlDraft}
+              ttlObservedAtMs={inspectionObservedAtMs}
             />
           </aside>
         )}

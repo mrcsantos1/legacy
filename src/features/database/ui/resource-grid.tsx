@@ -3,7 +3,8 @@ import type { ResourceDescriptor } from "@/shared/api/client";
 import { clsx } from "clsx";
 import { ChevronsDown, Database } from "lucide-react";
 
-import { formatTtl } from "./value-format";
+import { TtlBadge } from "./ttl-badge";
+import { useNow } from "./use-now";
 import { EmptyState, SkeletonRows } from "./workbench-states";
 
 interface ResourceGridProps {
@@ -16,6 +17,7 @@ interface ResourceGridProps {
   readonly onResourceSelected: (resourceId: string) => void;
   readonly resources: ResourceDescriptor[];
   readonly selectedResourceId: string | null;
+  readonly ttlObservedAtMs: number;
 }
 
 export function ResourceGrid({
@@ -27,8 +29,11 @@ export function ResourceGrid({
   onLoadMore,
   onResourceSelected,
   resources,
-  selectedResourceId
+  selectedResourceId,
+  ttlObservedAtMs
 }: ResourceGridProps) {
+  // One clock for the whole table; rows must not own their own intervals.
+  const nowMs = useNow(1000);
   const isInitialLoad = isLoadingResources && resources.length === 0;
   const isEmpty = !isLoadingResources && resources.length === 0;
 
@@ -83,7 +88,11 @@ export function ResourceGrid({
                   {resource.type}
                 </td>
                 <td className="border-b border-[#E0D7C8] px-4 py-3">
-                  {formatTtl(resource.ttlSeconds)}
+                  <TtlBadge
+                    nowMs={nowMs}
+                    observedAtMs={ttlObservedAtMs}
+                    ttlSeconds={resource.ttlSeconds}
+                  />
                 </td>
                 <td className="border-b border-[#E0D7C8] px-4 py-3">
                   {resource.provider}

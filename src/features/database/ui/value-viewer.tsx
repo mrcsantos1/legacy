@@ -15,9 +15,9 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { LiveTtlBadge } from "./ttl-badge";
 import {
     describePreviewMeta,
-    formatTtl,
     previewMetaOf,
     tryParseJson
 } from "./value-format";
@@ -30,6 +30,7 @@ interface ValueViewerProps {
   readonly inspection: ResourceInspection;
   readonly isLoadingMore: boolean;
   readonly onLoadMore: () => void;
+  readonly ttlObservedAtMs: number;
   readonly valueDisplayLabel: string;
 }
 
@@ -43,6 +44,7 @@ export function ValueViewer({
   inspection,
   isLoadingMore,
   onLoadMore,
+  ttlObservedAtMs,
   valueDisplayLabel
 }: ValueViewerProps) {
   const [view, setView] = useState<ValueView>("edit");
@@ -99,7 +101,10 @@ export function ValueViewer({
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6F675C]">
             <span>{inspection.resource.type}</span>
             <span>{inspection.resource.provider}</span>
-            <span>{formatTtl(inspection.resource.ttlSeconds)}</span>
+            <LiveTtlBadge
+              observedAtMs={ttlObservedAtMs}
+              ttlSeconds={inspection.resource.ttlSeconds}
+            />
             {metaFacts.map((fact) => (
               <span
                 className="rounded border border-[#C3BAAA] px-1.5 py-0.5"
