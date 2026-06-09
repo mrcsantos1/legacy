@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -184,5 +184,79 @@ describe("DatabaseWorkbench", () => {
 
     expect((editor as HTMLTextAreaElement).value).toContain(`"name": "W22Prime"`);
     expect((editor as HTMLTextAreaElement).value).toContain(`"functions": [`);
+  });
+
+  it("removes a stale tree record when opening it reports NotFoundError", async () => {
+    const listNamespaces = async () => ({
+      cursor: "0",
+      nodes:
+        listNamespacesCalls++ === 0
+          ? [
+              {
+                depth: 0,
+                hasChildren: false,
+                id: "user:ghost",
+                kind: "record" as const,
+                label: "ghost",
+                path: ["user", "ghost"],
+                resourceId: "user%3Aghost"
+              }
+            ]
+          : []
+    });
+    let listNamespacesCalls = 0;
+    const model = createDatabaseModel({
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return {
+          connections: [
+            {
+              id: "env:redis:default",
+              label: "Default Redis",
+              provider: "redis",
+              source: "environment",
+              urlPreview: "redis://localhost:6379"
+            }
+          ]
+        };
+      },
+      async inspectResource() {
+        const error = new Error("Redis key not found: user:ghost");
+        error.name = "NotFoundError";
+        throw error;
+      },
+      listNamespaces,
+      async listResources() {
+        return {
+          cursor: "0",
+          resources: []
+        };
+      },
+      async mutateResource() {
+        return {
+          changedResourceIds: ["user%3Aghost"],
+          status: "success"
+        };
+      }
+    });
+
+    render(<DatabaseWorkbench model={model} />);
+
+    const staleNode = await screen.findByRole("button", {
+      name: "Open record user:ghost"
+    });
+
+    await userEvent.click(staleNode);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Open record user:ghost" })
+      ).not.toBeInTheDocument();
+    });
   });
 });

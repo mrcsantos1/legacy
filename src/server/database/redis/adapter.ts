@@ -78,6 +78,10 @@ export class RedisAdapter implements DatabaseAdapter {
       }
 
       const resource = await this.describeKey(client, key, DEFAULT_DELIMITER);
+      if (!resource) {
+        throw new NotFoundError(`Redis key not found: ${key}`);
+      }
+
       const value = await this.readValue(client, key, resource.type);
 
       return {
@@ -103,12 +107,13 @@ export class RedisAdapter implements DatabaseAdapter {
         cursor: query.cursor,
         match: namespacePathToMatchPattern(path, delimiter)
       });
+      const existingKeys = await this.filterExistingKeys(client, scanResult.keys);
 
       return {
         cursor: scanResult.cursor,
         nodes: deriveNamespaceNodes({
           delimiter,
-          keys: scanResult.keys,
+          keys: existingKeys,
           path
         })
       };
@@ -132,13 +137,13 @@ export class RedisAdapter implements DatabaseAdapter {
         namespace,
         scope: query.scope ?? "descendants"
       });
-      const resources = await Promise.all(
+      const describedResources = await Promise.all(
         scopedKeys.map((key) => this.describeKey(client, key, delimiter))
       );
 
       return {
         cursor: scanResult.cursor,
-        resources
+        resources: describedResources.filter(isResourceDescriptor)
       };
     });
   }
@@ -235,8 +240,12 @@ export class RedisAdapter implements DatabaseAdapter {
     client: RedisClientLike,
     key: string,
     delimiter: string
-  ): Promise<ResourceDescriptor> {
+  ): Promise<ResourceDescriptor | null> {
     const [type, ttlSeconds] = await Promise.all([client.type(key), client.ttl(key)]);
+
+    if (type === "none" || ttlSeconds === -2) {
+      return null;
+    }
 
     return {
       id: encodeResourceId(key),
@@ -311,6 +320,22 @@ export class RedisAdapter implements DatabaseAdapter {
     };
   }
 
+  private async filterExistingKeys(
+    client: RedisClientLike,
+    keys: string[]
+  ): Promise<string[]> {
+    const existenceChecks = await Promise.all(
+      keys.map(async (key) => ({
+        exists: (await client.exists(key)) > 0,
+        key
+      }))
+    );
+
+    return existenceChecks
+      .filter((check) => check.exists)
+      .map((check) => check.key);
+  }
+
   private async withClient<T>(
     config: ConnectionConfig,
     operation: (client: RedisClientLike) => Promise<T>
@@ -362,4 +387,10 @@ function serializeMutationValue(value: unknown): string {
   }
 
   return JSON.stringify(value);
+}
+
+function isResourceDescriptor(
+  resource: ResourceDescriptor | null
+): resource is ResourceDescriptor {
+  return resource !== null;
 }

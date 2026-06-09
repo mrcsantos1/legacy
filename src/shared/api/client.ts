@@ -189,7 +189,7 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
   const payload = (await response.json()) as unknown;
 
   if (!response.ok) {
-    throw new Error(extractErrorMessage(payload));
+    throw createApiError(payload);
   }
 
   return payload as T;
@@ -200,7 +200,15 @@ function formatQuery(query: URLSearchParams): string {
   return value.length > 0 ? `?${value}` : "";
 }
 
-function extractErrorMessage(payload: unknown): string {
+function createApiError(payload: unknown): Error {
+  const errorPayload = extractErrorPayload(payload);
+  const error = new Error(errorPayload.message);
+
+  error.name = errorPayload.name;
+  return error;
+}
+
+function extractErrorPayload(payload: unknown): { message: string; name: string } {
   if (
     typeof payload === "object" &&
     payload !== null &&
@@ -210,8 +218,17 @@ function extractErrorMessage(payload: unknown): string {
     "message" in payload.error &&
     typeof payload.error.message === "string"
   ) {
-    return payload.error.message;
+    return {
+      message: payload.error.message,
+      name:
+        "name" in payload.error && typeof payload.error.name === "string"
+          ? payload.error.name
+          : "LegacyApiError"
+    };
   }
 
-  return "Legacy API request failed.";
+  return {
+    message: "Legacy API request failed.",
+    name: "LegacyApiError"
+  };
 }
