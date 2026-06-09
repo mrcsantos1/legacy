@@ -29,6 +29,7 @@ export interface WorkspaceTab {
 
 export interface WorkspaceState {
   readonly activeTabId: string | null;
+  readonly staleNotice: string | null;
   readonly tabs: WorkspaceTab[];
 }
 
@@ -47,11 +48,17 @@ export type WorkspaceAction =
   | { readonly type: "commitSearch"; readonly value: string }
   | { readonly resourceId: string; readonly type: "selectResource" }
   | { readonly type: "clearSelectedResource" }
-  | { readonly resourceIds: string[]; readonly type: "purgeResources" }
-  | { readonly page: number; readonly type: "setPreviewPage" };
+  | {
+      readonly notice?: string;
+      readonly resourceIds: string[];
+      readonly type: "purgeResources";
+    }
+  | { readonly page: number; readonly type: "setPreviewPage" }
+  | { readonly type: "clearStaleNotice" };
 
 export const initialWorkspaceState: WorkspaceState = {
   activeTabId: null,
+  staleNotice: null,
   tabs: []
 };
 
@@ -73,7 +80,7 @@ export function workspaceReducer(
           ? state.activeTabId
           : (tabs[0]?.id ?? null);
 
-      return { activeTabId, tabs };
+      return { ...state, activeTabId, tabs };
     }
     case "openTab": {
       if (state.tabs.some((tab) => tab.id === action.id)) {
@@ -81,6 +88,7 @@ export function workspaceReducer(
       }
 
       return {
+        ...state,
         activeTabId: action.id,
         tabs: [...state.tabs, createTab(action.id, action.label)]
       };
@@ -98,7 +106,7 @@ export function workspaceReducer(
           ? (tabs[index]?.id ?? tabs[index - 1]?.id ?? null)
           : state.activeTabId;
 
-      return { activeTabId, tabs };
+      return { ...state, activeTabId, tabs };
     }
     case "activateTab":
       return state.tabs.some((tab) => tab.id === action.id)
@@ -137,8 +145,8 @@ export function workspaceReducer(
         previewPage: 1,
         selectedResourceId: null
       }));
-    case "purgeResources":
-      return mapActiveTab(state, (tab) => {
+    case "purgeResources": {
+      const purgedState = mapActiveTab(state, (tab) => {
         const selectionPurged =
           tab.selectedResourceId !== null &&
           action.resourceIds.includes(tab.selectedResourceId);
@@ -153,11 +161,20 @@ export function workspaceReducer(
           selectedResourceId: selectionPurged ? null : tab.selectedResourceId
         };
       });
+
+      return action.notice === undefined
+        ? purgedState
+        : { ...purgedState, staleNotice: action.notice };
+    }
     case "setPreviewPage":
       return mapActiveTab(state, (tab) => ({
         ...tab,
         previewPage: Math.max(1, action.page)
       }));
+    case "clearStaleNotice":
+      return state.staleNotice === null
+        ? state
+        : { ...state, staleNotice: null };
     default:
       return state;
   }
