@@ -18,10 +18,10 @@ describe("DatabaseWorkbench", () => {
         return {
           connections: [
             {
-              id: "env:redis:default",
+              id: "session:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -112,10 +112,10 @@ describe("DatabaseWorkbench", () => {
         return {
           connections: [
             {
-              id: "env:redis:default",
+              id: "session:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -216,10 +216,10 @@ describe("DatabaseWorkbench", () => {
         return {
           connections: [
             {
-              id: "env:redis:default",
+              id: "session:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -308,10 +308,10 @@ describe("DatabaseWorkbench", () => {
         return {
           connections: [
             {
-              id: "env:redis:default",
+              id: "session:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -386,10 +386,10 @@ describe("DatabaseWorkbench", () => {
         return {
           connections: [
             {
-              id: "env:redis:default",
+              id: "session:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]

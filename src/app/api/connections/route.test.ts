@@ -9,7 +9,15 @@ describe("GET /api/connections", () => {
     process.env.LEGACY_DEFAULT_REDIS_URL = originalRedisUrl;
   });
 
-  it("returns a redacted environment connection summary when configured", async () => {
+  it("returns no connections for a fresh session", async () => {
+    const response = await GET(
+      new Request("http://legacy.test/api/connections")
+    );
+
+    await expect(response.json()).resolves.toEqual({ connections: [] });
+  });
+
+  it("never derives a connection from Redis environment variables", async () => {
     process.env.LEGACY_DEFAULT_REDIS_URL =
       "redis://default:secret@example.com:6379/0";
 
@@ -17,16 +25,6 @@ describe("GET /api/connections", () => {
       new Request("http://legacy.test/api/connections")
     );
 
-    await expect(response.json()).resolves.toMatchObject({
-      connections: [
-        {
-          id: "env:redis:default",
-          label: "Default Redis",
-          provider: "redis",
-          source: "environment",
-          urlPreview: "redis://default:***@example.com:6379/0"
-        }
-      ]
-    });
+    await expect(response.json()).resolves.toEqual({ connections: [] });
   });
 });

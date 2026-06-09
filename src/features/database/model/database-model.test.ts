@@ -19,7 +19,7 @@ describe("database Effector model", () => {
               id: "env:redis:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -73,7 +73,7 @@ describe("database Effector model", () => {
               id: "env:redis:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -166,7 +166,7 @@ describe("database Effector model", () => {
               id: "env:redis:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -261,7 +261,7 @@ describe("database Effector model", () => {
               id: "env:redis:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -370,7 +370,7 @@ describe("database Effector model", () => {
               id: "env:redis:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -478,7 +478,7 @@ describe("database Effector model", () => {
               id: "env:redis:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]
@@ -569,7 +569,7 @@ describe("database Effector model", () => {
               id: "env:redis:default",
               label: "Default Redis",
               provider: "redis",
-              source: "environment",
+              source: "session",
               urlPreview: "redis://localhost:6379"
             }
           ]

@@ -1,6 +1,6 @@
 export type DatabaseProvider = "redis";
 
-export type ConnectionSource = "environment" | "session";
+export type ConnectionSource = "session";
 
 export interface ConnectionConfig {
   readonly database?: number;

@@ -1,16 +1,12 @@
 import { NotFoundError } from "./errors";
-import {
-  getEnvironmentConnection,
-  getEnvironmentConnectionSummary
-} from "./environment";
-import { DatabaseAdapterRegistry } from "./registry";
 import { RedisAdapter } from "./redis/adapter";
+import { DatabaseAdapterRegistry } from "./registry";
 import { DatabaseService } from "./service";
 import { SessionConnectionStore } from "./session-store";
 import type {
-  ConnectionConfig,
-  ConnectionSummary,
-  NewConnectionInput
+    ConnectionConfig,
+    ConnectionSummary,
+    NewConnectionInput
 } from "./types";
 
 const registry = new DatabaseAdapterRegistry();
@@ -20,24 +16,13 @@ export const databaseService = new DatabaseService(registry);
 export const sessionConnectionStore = new SessionConnectionStore();
 
 export function listConnectionSummaries(sessionId: string): ConnectionSummary[] {
-  const environmentConnection = getEnvironmentConnectionSummary();
-  const summaries = sessionConnectionStore.list(sessionId);
-
-  return environmentConnection
-    ? [environmentConnection, ...summaries]
-    : summaries;
+  return sessionConnectionStore.list(sessionId);
 }
 
 export function resolveConnection(
   sessionId: string,
   connectionId: string
 ): ConnectionConfig {
-  const environmentConnection = getEnvironmentConnection();
-
-  if (environmentConnection?.id === connectionId) {
-    return environmentConnection;
-  }
-
   const sessionConnection = sessionConnectionStore.get(sessionId, connectionId);
 
   if (!sessionConnection) {

@@ -1,48 +1,56 @@
 "use client";
 
 import {
-  AlertTriangle,
-  ArrowLeft,
-  Archive,
-  ChevronRight,
-  Clock,
-  Code,
-  Database,
-  FileText,
-  Folder,
-  FolderOpen,
-  KeyRound,
-  Pencil,
-  PlugZap,
-  RefreshCw,
-  Search,
-  Server,
-  Trash2
-} from "lucide-react";
-import { useUnit } from "effector-react";
-import {
-  FormEvent,
-  type RefObject,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from "react";
-import { clsx } from "clsx";
-
-import {
-  createDatabaseModel,
-  databaseModel
+    createDatabaseModel,
+    databaseModel
 } from "@/features/database/model/database-model";
+import {
+    forgetRememberedConnection,
+    getRememberedConnectionsServerSnapshot,
+    getRememberedConnectionsSnapshot,
+    rememberConnection,
+    subscribeRememberedConnections,
+    type RememberedConnection
+} from "@/features/database/model/remembered-connections";
 import type {
-  DataPreview,
-  NamespaceNode,
-  ResourceDescriptor,
-  ResourceInspection
+    DataPreview,
+    NamespaceNode,
+    ResourceDescriptor,
+    ResourceInspection
 } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
 import { FieldLabel, TextInput } from "@/shared/ui/field";
 import { LegacyLogo } from "@/shared/ui/legacy-logo";
+import { clsx } from "clsx";
+import { useUnit } from "effector-react";
+import {
+    AlertTriangle,
+    Archive,
+    ArrowLeft,
+    ChevronRight,
+    Clock,
+    Code,
+    Database,
+    FileText,
+    Folder,
+    FolderOpen,
+    KeyRound,
+    Pencil,
+    PlugZap,
+    RefreshCw,
+    Search,
+    Server,
+    Trash2
+} from "lucide-react";
+import {
+    FormEvent,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    useSyncExternalStore,
+    type RefObject
+} from "react";
 
 type DatabaseModel = ReturnType<typeof createDatabaseModel>;
 
@@ -86,6 +94,11 @@ export function DatabaseWorkbench({
   const [searchDraft, setSearchDraft] = useState("");
   const [ttlDraft, setTtlDraft] = useState("300");
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const remembered = useSyncExternalStore(
+    subscribeRememberedConnections,
+    getRememberedConnectionsSnapshot,
+    getRememberedConnectionsServerSnapshot
+  );
   const { appStarted, selectedConnectionId, visibleDataRefreshed } = units;
 
   useEffect(() => {
@@ -125,11 +138,48 @@ export function DatabaseWorkbench({
 
   function handleCreateConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void units.createSessionConnection({
-      label,
-      provider: "redis",
-      url
+    void connect({ label, url });
+  }
+
+  async function connect(input: {
+    readonly database?: number;
+    readonly label: string;
+    readonly tls?: boolean;
+    readonly url: string;
+  }) {
+    try {
+      await units.createSessionConnection({
+        database: input.database,
+        label: input.label,
+        provider: "redis",
+        tls: input.tls,
+        url: input.url
+      });
+      rememberConnection({
+        database: input.database,
+        label: input.label,
+        provider: "redis",
+        tls: input.tls,
+        url: input.url
+      });
+    } catch {
+      // Connection failures are surfaced through units.error.
+    }
+  }
+
+  function handleConnectRemembered(entry: RememberedConnection) {
+    setLabel(entry.label);
+    setUrl(entry.url);
+    void connect({
+      database: entry.database,
+      label: entry.label,
+      tls: entry.tls,
+      url: entry.url
     });
+  }
+
+  function handleForgetRemembered(id: string) {
+    forgetRememberedConnection(id);
   }
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -269,6 +319,50 @@ export function DatabaseWorkbench({
                 Connect
               </Button>
             </form>
+
+            {remembered.length > 0 ? (
+              <div className="mt-4 space-y-1.5">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#6F675C]">
+                  <Clock aria-hidden="true" size={13} />
+                  Remembered
+                </div>
+                <ul className="space-y-1">
+                  {remembered.map((entry) => (
+                    <li
+                      className="flex items-center gap-1 rounded-md border border-transparent hover:bg-[#ECE3D6]"
+                      key={entry.id}
+                    >
+                      <button
+                        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
+                        disabled={units.isConnecting}
+                        onClick={() => handleConnectRemembered(entry)}
+                        title={`Connect to ${entry.label}`}
+                        type="button"
+                      >
+                        <PlugZap aria-hidden="true" size={14} />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {entry.label}
+                          </span>
+                          <span className="block truncate text-xs text-[#6F675C]">
+                            {entry.url}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        aria-label={`Forget ${entry.label}`}
+                        className="rounded-md p-1.5 text-[#6F675C] transition hover:bg-[#E4D8C6] hover:text-[#7A2E22]"
+                        onClick={() => handleForgetRemembered(entry.id)}
+                        title="Forget connection"
+                        type="button"
+                      >
+                        <Trash2 aria-hidden="true" size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </section>
 
           <section className="min-h-0 flex-1 overflow-y-auto p-3">
