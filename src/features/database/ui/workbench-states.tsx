@@ -3,6 +3,7 @@ import {
     AlertTriangle,
     PanelLeftOpen,
     PanelRightOpen,
+    X,
     type LucideIcon
 } from "lucide-react";
 
@@ -14,6 +15,39 @@ export function ErrorBanner({ message }: { readonly message: string }) {
     >
       <AlertTriangle aria-hidden="true" className="shrink-0" size={16} />
       <span className="min-w-0 truncate">{message}</span>
+    </div>
+  );
+}
+
+// Localized stale-key feedback: one key vanished, the rest of the workbench
+// must stay untouched — never a full-screen error or a cleared tree.
+export function StaleKeyNotice({
+  message,
+  onDismiss
+}: {
+  readonly message: string;
+  readonly onDismiss: () => void;
+}) {
+  return (
+    <div
+      className="absolute bottom-4 right-4 z-20 flex max-w-sm items-center gap-2 rounded-md border border-[#C3BAAA] bg-[#F7F1E8] px-3 py-2 text-xs text-[var(--legacy-ink)] shadow-lg"
+      role="status"
+    >
+      <AlertTriangle
+        aria-hidden="true"
+        className="shrink-0 text-amber-700"
+        size={14}
+      />
+      <span className="min-w-0">{message}</span>
+      <button
+        aria-label="Dismiss stale key notice"
+        className="shrink-0 rounded p-0.5 text-[#6F675C] transition hover:bg-[#ECE3D6]"
+        onClick={onDismiss}
+        title="Dismiss"
+        type="button"
+      >
+        <X aria-hidden="true" size={13} />
+      </button>
     </div>
   );
 }

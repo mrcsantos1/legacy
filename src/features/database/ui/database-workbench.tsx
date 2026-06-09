@@ -14,6 +14,7 @@ import {
 } from "@/features/database/model/database-queries";
 import {
     isNotFoundError,
+    removeResourcesForIds,
     shouldPurgeChangedResources
 } from "@/features/database/model/namespace-tree";
 import {
@@ -33,7 +34,8 @@ import {
     databaseApi,
     type DatabaseApi,
     type MutationRequest,
-    type NamespaceNode
+    type NamespaceNode,
+    type ResourceListResult
 } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
 import { TextInput } from "@/shared/ui/field";
@@ -41,7 +43,8 @@ import { LegacyLogo } from "@/shared/ui/legacy-logo";
 import {
     QueryClient,
     QueryClientProvider,
-    useQueryClient
+    useQueryClient,
+    type InfiniteData
 } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import {
@@ -55,6 +58,7 @@ import {
 } from "lucide-react";
 import {
     FormEvent,
+    useCallback,
     useEffect,
     useMemo,
     useRef,
@@ -75,7 +79,11 @@ import {
     previewMetaOf
 } from "./value-format";
 import { ValueViewer } from "./value-viewer";
-import { CollapsedRail, ErrorBanner } from "./workbench-states";
+import {
+    CollapsedRail,
+    ErrorBanner,
+    StaleKeyNotice
+} from "./workbench-states";
 
 interface DatabaseWorkbenchProps {
   readonly api?: DatabaseApi;
@@ -135,6 +143,7 @@ function WorkbenchView() {
   const [ttlDraft, setTtlDraft] = useState("300");
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const staleNotice = state.staleNotice;
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const remembered = useSyncExternalStore(
     subscribeRememberedConnections,
@@ -165,6 +174,57 @@ function WorkbenchView() {
     }
   }, [namespacesData, namespacePath, dispatch]);
 
+  // Targeted ghost-key recovery: drop only the vanished key from the tree
+  // and the cached resource pages, surface a localized notice, and let the
+  // background invalidation reconcile with the server. Never reset state.
+  const purgeStaleResource = useCallback(
+    (resourceId: string) => {
+      dispatch({
+        notice: `Key "${describeResourceId(resourceId)}" no longer exists and was removed from the list.`,
+        resourceIds: [resourceId],
+        type: "purgeResources"
+      });
+
+      if (activeConnectionId !== null) {
+        queryClient.setQueriesData<InfiniteData<ResourceListResult>>(
+          { queryKey: ["resources", activeConnectionId] },
+          (data) =>
+            data
+              ? {
+                  ...data,
+                  pages: data.pages.map((page) => ({
+                    ...page,
+                    resources: removeResourcesForIds(page.resources, [
+                      resourceId
+                    ])
+                  }))
+                }
+              : data
+        );
+        void queryClient.invalidateQueries({
+          queryKey: ["resources", activeConnectionId]
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ["namespaces", activeConnectionId]
+        });
+      }
+    },
+    [activeConnectionId, dispatch, queryClient]
+  );
+
+  useEffect(() => {
+    if (staleNotice === null) {
+      return;
+    }
+
+    const id = window.setTimeout(
+      () => dispatch({ type: "clearStaleNotice" }),
+      5000
+    );
+
+    return () => window.clearTimeout(id);
+  }, [staleNotice, dispatch]);
+
   const inspectionError = inspectionQuery.error;
   useEffect(() => {
     if (!inspectionError || !isNotFoundError(inspectionError)) {
@@ -175,23 +235,8 @@ function WorkbenchView() {
       return;
     }
 
-    dispatch({ resourceIds: [selectedResourceId], type: "purgeResources" });
-
-    if (activeConnectionId !== null) {
-      void queryClient.invalidateQueries({
-        queryKey: ["resources", activeConnectionId]
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["namespaces", activeConnectionId]
-      });
-    }
-  }, [
-    inspectionError,
-    selectedResourceId,
-    activeConnectionId,
-    dispatch,
-    queryClient
-  ]);
+    purgeStaleResource(selectedResourceId);
+  }, [inspectionError, selectedResourceId, purgeStaleResource]);
 
   const inspection = inspectionQuery.data ?? null;
   const resourcesData = resourcesQuery.data;
@@ -287,7 +332,9 @@ function WorkbenchView() {
       resourcesQuery.error,
       createConnection.error,
       deleteConnection.error,
-      mutateResource.error,
+      mutateResource.error && !isNotFoundError(mutateResource.error)
+        ? mutateResource.error
+        : null,
       inspectionError && !isNotFoundError(inspectionError)
         ? inspectionError
         : null
@@ -414,6 +461,11 @@ function WorkbenchView() {
     }
 
     mutateResource.mutate(mutation, {
+      onError: (error) => {
+        if (isNotFoundError(error) && mutation.resourceId) {
+          purgeStaleResource(mutation.resourceId);
+        }
+      },
       onSuccess: (result) => {
         if (shouldPurgeChangedResources(mutation)) {
           const purgedIds = mutation.resourceId
@@ -478,7 +530,7 @@ function WorkbenchView() {
   }
 
   return (
-    <main className="flex h-dvh flex-col overflow-hidden bg-[var(--legacy-panel)] text-[var(--legacy-ink)]">
+    <main className="relative flex h-dvh flex-col overflow-hidden bg-[var(--legacy-panel)] text-[var(--legacy-ink)]">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-[#2C302C] bg-[var(--legacy-charcoal)] px-4">
         <LegacyLogo />
         <Button
@@ -694,6 +746,13 @@ function WorkbenchView() {
           </aside>
         )}
       </section>
+
+      {staleNotice ? (
+        <StaleKeyNotice
+          message={staleNotice}
+          onDismiss={() => dispatch({ type: "clearStaleNotice" })}
+        />
+      ) : null}
     </main>
   );
 }
@@ -701,6 +760,14 @@ function WorkbenchView() {
 const EMPTY_PATH: string[] = [];
 
 const EMPTY_NODES: NamespaceNode[] = [];
+
+function describeResourceId(resourceId: string): string {
+  try {
+    return decodeURIComponent(resourceId);
+  } catch {
+    return resourceId;
+  }
+}
 
 function resolveErrorMessage(errors: ReadonlyArray<unknown>): string | null {
   for (const candidate of errors) {

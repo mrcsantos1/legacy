@@ -725,4 +725,234 @@ describe("DatabaseWorkbench", () => {
     expect(screen.queryByDisplayValue("v1")).not.toBeInTheDocument();
     expect(await screen.findByDisplayValue("v1-updated")).toBeInTheDocument();
   });
+
+  it("removes a vanished key from the table with a localized notice", async () => {
+    let resourceCalls = 0;
+    const listResources = vi.fn(
+      (): Promise<{ cursor: string; resources: ReturnType<typeof keyResource>[] }> => {
+        resourceCalls += 1;
+
+        if (resourceCalls === 1) {
+          return Promise.resolve({
+            cursor: "0",
+            resources: [keyResource("user%3Aghost", "user:ghost")]
+          });
+        }
+
+        // The reconciling rescan stays pending: only the synchronous cache
+        // update can make the ghost row disappear.
+        return new Promise(() => undefined);
+      }
+    );
+    const api: DatabaseApi = {
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return sessionConnections();
+      },
+      async inspectResource() {
+        const error = new Error("Redis key not found: user:ghost");
+        error.name = "NotFoundError";
+        throw error;
+      },
+      async listNamespaces() {
+        return {
+          cursor: "0",
+          nodes: [
+            {
+              depth: 0,
+              hasChildren: false,
+              id: "user:keep",
+              kind: "record" as const,
+              label: "keep",
+              path: ["user", "keep"],
+              resourceId: "user%3Akeep"
+            }
+          ]
+        };
+      },
+      listResources,
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    };
+
+    render(<DatabaseWorkbench api={api} />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /inspect user:ghost/i })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /inspect user:ghost/i })
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(
+        'Key "user:ghost" no longer exists and was removed from the list.'
+      )
+    ).toBeInTheDocument();
+    // Recovery is targeted: the rest of the tree stays untouched.
+    expect(
+      screen.getByRole("button", { name: "Open record user:keep" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Dismiss stale key notice" })
+    );
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("treats a NotFound mutation as a stale key instead of a global error", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const api: DatabaseApi = {
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return sessionConnections();
+      },
+      async inspectResource() {
+        return scalarInspection({ id: "user%3A1", name: "user:1", value: "Ada" });
+      },
+      async listNamespaces() {
+        return { cursor: "0", nodes: [] };
+      },
+      async listResources() {
+        return { cursor: "0", resources: [keyResource("user%3A1", "user:1")] };
+      },
+      async mutateResource() {
+        const error = new Error("Redis key not found: user:1");
+        error.name = "NotFoundError";
+        throw error;
+      }
+    };
+
+    render(<DatabaseWorkbench api={api} />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /inspect user:1/i })
+    );
+    expect(await screen.findByDisplayValue("Ada")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(
+      await screen.findByText(
+        'Key "user:1" no longer exists and was removed from the list.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Ada")).not.toBeInTheDocument();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("preserves visible rows while a refresh scan is pending", async () => {
+    let resourceCalls = 0;
+    const listResources = vi.fn(
+      (): Promise<{ cursor: string; resources: ReturnType<typeof keyResource>[] }> => {
+        resourceCalls += 1;
+
+        if (resourceCalls === 1) {
+          return Promise.resolve({
+            cursor: "0",
+            resources: [keyResource("user%3A1", "user:1")]
+          });
+        }
+
+        return new Promise(() => undefined);
+      }
+    );
+    const api: DatabaseApi = {
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return sessionConnections();
+      },
+      async inspectResource() {
+        throw new Error("not used");
+      },
+      async listNamespaces() {
+        return { cursor: "0", nodes: [] };
+      },
+      listResources,
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    };
+
+    const { container } = render(<DatabaseWorkbench api={api} />);
+
+    expect(
+      await screen.findByRole("button", { name: /inspect user:1/i })
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    // The pending rescan must not blank the table; rows stay visible behind
+    // a localized refresh indicator.
+    await waitFor(() => {
+      expect(container.querySelector("table")).toHaveClass("opacity-60");
+    });
+    expect(
+      screen.getByRole("button", { name: /inspect user:1/i })
+    ).toBeInTheDocument();
+  });
+
+  it("applies TTL color tiers with explanatory tooltips in the table", async () => {
+    const api: DatabaseApi = {
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return sessionConnections();
+      },
+      async inspectResource() {
+        throw new Error("not used");
+      },
+      async listNamespaces() {
+        return { cursor: "0", nodes: [] };
+      },
+      async listResources() {
+        return {
+          cursor: "0",
+          resources: [
+            { ...keyResource("user%3A1", "user:1"), ttlSeconds: 10 },
+            { ...keyResource("user%3A2", "user:2"), ttlSeconds: -1 }
+          ]
+        };
+      },
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    };
+
+    render(<DatabaseWorkbench api={api} />);
+
+    const dangerBadge = await screen.findByTitle(
+      "This key is about to expire."
+    );
+    expect(dangerBadge).toHaveClass("text-red-700");
+
+    const persistentBadge = screen.getByTitle("This key has no expiration.");
+    expect(persistentBadge).toHaveTextContent("persistent");
+  });
 });
