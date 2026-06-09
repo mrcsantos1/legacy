@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getConnections, listResources } from "./client";
+import { getConnections, inspectResource, listResources } from "./client";
 
 describe("shared API client", () => {
   const originalFetch = globalThis.fetch;
@@ -51,5 +51,29 @@ describe("shared API client", () => {
       "/api/connections/env%3Aredis%3Adefault/resources?namespace=user%3A1000&search=session&cursor=12&count=50",
       expect.objectContaining({ credentials: "same-origin" })
     );
+  });
+
+  it("preserves API error names for callers that need structured handling", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json(
+        {
+          error: {
+            message: "Redis key not found: user:ghost",
+            name: "NotFoundError"
+          }
+        },
+        { status: 404 }
+      )
+    );
+
+    await expect(
+      inspectResource({
+        connectionId: "env:redis:default",
+        resourceId: "user%3Aghost"
+      })
+    ).rejects.toMatchObject({
+      message: "Redis key not found: user:ghost",
+      name: "NotFoundError"
+    });
   });
 });

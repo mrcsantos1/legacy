@@ -24,6 +24,7 @@ export function createDatabaseModel(api: DatabaseApi) {
   const resourceSelected = createEvent<string>();
   const resourcesRefreshed = createEvent();
   const searchChanged = createEvent<string>();
+  const visibleDataRefreshed = createEvent();
 
   const loadConnectionsFx = createEffect(api.getConnections);
   const createSessionConnectionFx = createEffect((input: NewConnectionInput) =>
@@ -89,20 +90,68 @@ export function createDatabaseModel(api: DatabaseApi) {
     .on(loadNamespacesFx.done, (nodes, { params, result }) =>
       mergeNamespaceNodes(nodes, params.path ?? [], result.nodes)
     )
+    .on(inspectResourceFx.fail, (nodes, { error, params }) =>
+      isNotFoundError(error)
+        ? removeNamespaceNodesForResourceIds(nodes, [params.resourceId])
+        : nodes
+    )
+    .on(mutateResourceFx.done, (nodes, { params, result }) =>
+      shouldPurgeChangedResources(params.mutation)
+        ? removeNamespaceNodesForResourceIds(nodes, result.changedResourceIds)
+        : nodes
+    )
     .reset(connectionSelected);
-  const $resources = createStore<ResourceDescriptor[]>([]).on(
-    loadResourcesFx.doneData,
-    (_, payload) => payload.resources
-  );
+  const $resources = createStore<ResourceDescriptor[]>([])
+    .on(loadResourcesFx.doneData, (_, payload) => payload.resources)
+    .on(inspectResourceFx.fail, (resources, { error, params }) =>
+      isNotFoundError(error)
+        ? removeResourcesForIds(resources, [params.resourceId])
+        : resources
+    )
+    .on(mutateResourceFx.done, (resources, { params, result }) =>
+      shouldPurgeChangedResources(params.mutation)
+        ? removeResourcesForIds(resources, result.changedResourceIds)
+        : resources
+    );
   const $resourceCursor = createStore("0").on(
     loadResourcesFx.doneData,
     (_, payload) => payload.cursor
   );
   const $selectedResourceId = createStore<string | null>(null)
     .on(resourceSelected, (_, resourceId) => resourceId)
+    .on(mutateResourceFx.done, (resourceId, { params, result }) =>
+      resourceId &&
+      shouldClearSelectedResource(
+        resourceId,
+        params.mutation,
+        result.changedResourceIds
+      )
+        ? null
+        : resourceId
+    )
+    .on(inspectResourceFx.fail, (resourceId, { error, params }) =>
+      resourceId === params.resourceId && isNotFoundError(error)
+        ? null
+        : resourceId
+    )
     .reset(connectionSelected, namespaceSelected);
   const $inspection = createStore<ResourceInspection | null>(null)
     .on(inspectResourceFx.doneData, (_, inspection) => inspection)
+    .on(mutateResourceFx.done, (inspection, { params, result }) =>
+      inspection &&
+      shouldClearSelectedResource(
+        inspection.resource.id,
+        params.mutation,
+        result.changedResourceIds
+      )
+        ? null
+        : inspection
+    )
+    .on(inspectResourceFx.fail, (inspection, { error, params }) =>
+      inspection?.resource.id === params.resourceId && isNotFoundError(error)
+        ? null
+        : inspection
+    )
     .reset(connectionSelected, namespaceSelected);
   const $error = createStore<string | null>(null)
     .on(loadConnectionsFx.failData, (_, error) => error.message)
@@ -193,20 +242,17 @@ export function createDatabaseModel(api: DatabaseApi) {
     target: loadResourcesFx
   });
 
+  const refreshResourcesSource = {
+    connectionId: $selectedConnectionId,
+    namespace: $selectedNamespacePath,
+    search: $search
+  };
+
   sample({
     clock: resourcesRefreshed,
-    source: {
-      connectionId: $selectedConnectionId,
-      namespace: $selectedNamespacePath,
-      search: $search
-    },
+    source: refreshResourcesSource,
     filter: ({ connectionId }) => connectionId !== null,
-    fn: ({ connectionId, namespace, search }) => ({
-      connectionId: connectionId!,
-      namespace,
-      scope: resourceScopeForSearch(search),
-      search
-    }),
+    fn: toLoadResourcesInput,
     target: loadResourcesFx
   });
 
@@ -223,6 +269,72 @@ export function createDatabaseModel(api: DatabaseApi) {
 
   sample({
     clock: mutateResourceFx.done,
+    target: visibleDataRefreshed
+  });
+
+  sample({
+    clock: visibleDataRefreshed,
+    source: {
+      connectionId: $selectedConnectionId,
+      isLoadingNamespaces: $isLoadingNamespaces,
+      namespace: $selectedNamespacePath
+    },
+    filter: ({ connectionId, isLoadingNamespaces }) =>
+      connectionId !== null && !isLoadingNamespaces,
+    fn: ({ connectionId, namespace }) => ({
+      connectionId: connectionId!,
+      path: namespace
+    }),
+    target: loadNamespacesFx
+  });
+
+  sample({
+    clock: visibleDataRefreshed,
+    source: {
+      ...refreshResourcesSource,
+      isLoadingResources: $isLoadingResources
+    },
+    filter: ({ connectionId, isLoadingResources }) =>
+      connectionId !== null && !isLoadingResources,
+    fn: toLoadResourcesInput,
+    target: loadResourcesFx
+  });
+
+  sample({
+    clock: visibleDataRefreshed,
+    source: {
+      connectionId: $selectedConnectionId,
+      isInspecting: $isInspecting,
+      resourceId: $selectedResourceId
+    },
+    filter: ({ connectionId, isInspecting, resourceId }) =>
+      connectionId !== null && resourceId !== null && !isInspecting,
+    fn: ({ connectionId, resourceId }) => ({
+      connectionId: connectionId!,
+      resourceId: resourceId!
+    }),
+    target: inspectResourceFx
+  });
+
+  sample({
+    clock: inspectResourceFx.fail,
+    source: {
+      connectionId: $selectedConnectionId,
+      namespace: $selectedNamespacePath
+    },
+    filter: ({ connectionId }, { error }) =>
+      connectionId !== null && isNotFoundError(error),
+    fn: ({ connectionId, namespace }) => ({
+      connectionId: connectionId!,
+      path: namespace
+    }),
+    target: loadNamespacesFx
+  });
+
+  sample({
+    clock: inspectResourceFx.fail,
+    filter: ({ error }) => isNotFoundError(error),
+    fn: () => undefined,
     target: resourcesRefreshed
   });
 
@@ -242,7 +354,8 @@ export function createDatabaseModel(api: DatabaseApi) {
       namespaceSelected,
       resourceSelected,
       resourcesRefreshed,
-      searchChanged
+      searchChanged,
+      visibleDataRefreshed
     },
     stores: {
       $connections,
@@ -294,4 +407,64 @@ function pathKey(path: string[]): string {
 
 function resourceScopeForSearch(search: string): ResourceListScope {
   return search.trim().length > 0 ? "descendants" : "children";
+}
+
+function toLoadResourcesInput(input: {
+  readonly connectionId: string | null;
+  readonly namespace: string[];
+  readonly search: string;
+}): {
+  readonly connectionId: string;
+  readonly namespace: string[];
+  readonly scope: ResourceListScope;
+  readonly search: string;
+} {
+  return {
+    connectionId: input.connectionId!,
+    namespace: input.namespace,
+    scope: resourceScopeForSearch(input.search),
+    search: input.search
+  };
+}
+
+function isNotFoundError(error: Error): boolean {
+  return error.name === "NotFoundError";
+}
+
+function shouldPurgeChangedResources(mutation: MutationRequest): boolean {
+  return mutation.action === "delete" || mutation.action === "rename";
+}
+
+function shouldClearSelectedResource(
+  resourceId: string,
+  mutation: MutationRequest,
+  changedResourceIds: string[]
+): boolean {
+  if (!shouldPurgeChangedResources(mutation)) {
+    return false;
+  }
+
+  return (
+    mutation.resourceId === resourceId || changedResourceIds.includes(resourceId)
+  );
+}
+
+function removeNamespaceNodesForResourceIds(
+  nodes: NamespaceNode[],
+  resourceIds: string[]
+): NamespaceNode[] {
+  const staleResourceIds = new Set(resourceIds);
+
+  return nodes.filter(
+    (node) => !node.resourceId || !staleResourceIds.has(node.resourceId)
+  );
+}
+
+function removeResourcesForIds(
+  resources: ResourceDescriptor[],
+  resourceIds: string[]
+): ResourceDescriptor[] {
+  const staleResourceIds = new Set(resourceIds);
+
+  return resources.filter((resource) => !staleResourceIds.has(resource.id));
 }

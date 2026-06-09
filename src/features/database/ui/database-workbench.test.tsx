@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createDatabaseModel } from "../model/database-model";
 import { DatabaseWorkbench } from "./database-workbench";
@@ -184,5 +184,239 @@ describe("DatabaseWorkbench", () => {
 
     expect((editor as HTMLTextAreaElement).value).toContain(`"name": "W22Prime"`);
     expect((editor as HTMLTextAreaElement).value).toContain(`"functions": [`);
+  });
+
+  it("removes a stale tree record when opening it reports NotFoundError", async () => {
+    const listNamespaces = async () => ({
+      cursor: "0",
+      nodes:
+        listNamespacesCalls++ === 0
+          ? [
+              {
+                depth: 0,
+                hasChildren: false,
+                id: "user:ghost",
+                kind: "record" as const,
+                label: "ghost",
+                path: ["user", "ghost"],
+                resourceId: "user%3Aghost"
+              }
+            ]
+          : []
+    });
+    let listNamespacesCalls = 0;
+    const model = createDatabaseModel({
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return {
+          connections: [
+            {
+              id: "env:redis:default",
+              label: "Default Redis",
+              provider: "redis",
+              source: "environment",
+              urlPreview: "redis://localhost:6379"
+            }
+          ]
+        };
+      },
+      async inspectResource() {
+        const error = new Error("Redis key not found: user:ghost");
+        error.name = "NotFoundError";
+        throw error;
+      },
+      listNamespaces,
+      async listResources() {
+        return {
+          cursor: "0",
+          resources: []
+        };
+      },
+      async mutateResource() {
+        return {
+          changedResourceIds: ["user%3Aghost"],
+          status: "success"
+        };
+      }
+    });
+
+    render(<DatabaseWorkbench model={model} />);
+
+    const staleNode = await screen.findByRole("button", {
+      name: "Open record user:ghost"
+    });
+
+    await userEvent.click(staleNode);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Open record user:ghost" })
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("updates the selected record TTL automatically without reselecting it", async () => {
+    const inspectResource = vi
+      .fn()
+      .mockResolvedValueOnce({
+        metadata: { ttlSeconds: 5 },
+        resource: {
+          id: "user%3A1",
+          kind: "key" as const,
+          name: "user:1",
+          path: ["user", "1"],
+          provider: "redis" as const,
+          ttlSeconds: 5,
+          type: "string"
+        },
+        value: {
+          encoding: "utf8" as const,
+          kind: "scalar" as const,
+          value: "Ada"
+        }
+      })
+      .mockResolvedValueOnce({
+        metadata: { ttlSeconds: 4 },
+        resource: {
+          id: "user%3A1",
+          kind: "key" as const,
+          name: "user:1",
+          path: ["user", "1"],
+          provider: "redis" as const,
+          ttlSeconds: 4,
+          type: "string"
+        },
+        value: {
+          encoding: "utf8" as const,
+          kind: "scalar" as const,
+          value: "Ada"
+        }
+      });
+    const model = createDatabaseModel({
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return {
+          connections: [
+            {
+              id: "env:redis:default",
+              label: "Default Redis",
+              provider: "redis",
+              source: "environment",
+              urlPreview: "redis://localhost:6379"
+            }
+          ]
+        };
+      },
+      inspectResource,
+      async listNamespaces() {
+        return {
+          cursor: "0",
+          nodes: []
+        };
+      },
+      async listResources() {
+        return {
+          cursor: "0",
+          resources: [
+            {
+              id: "user%3A1",
+              kind: "key",
+              name: "user:1",
+              path: ["user", "1"],
+              provider: "redis",
+              ttlSeconds: 5,
+              type: "string"
+            }
+          ]
+        };
+      },
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    });
+
+    render(<DatabaseWorkbench model={model} />);
+
+    const row = await screen.findByRole("button", { name: /inspect user:1/i });
+    await userEvent.click(row);
+
+    expect(await screen.findAllByText("5s")).toHaveLength(2);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("4s")).toHaveLength(2);
+    }, { timeout: 2000 });
+    expect(screen.queryByText("Loading resource")).not.toBeInTheDocument();
+    expect(inspectResource).toHaveBeenCalledTimes(2);
+  });
+
+  it("updates resource table TTL automatically while a folder is open", async () => {
+    let resourceListCallCount = 0;
+    const listResources = vi.fn(async () => ({
+      cursor: "0",
+      resources: [
+        {
+          id: "user%3A1",
+          kind: "key" as const,
+          name: "user:1",
+          path: ["user", "1"],
+          provider: "redis" as const,
+          ttlSeconds: resourceListCallCount++ === 0 ? 5 : 4,
+          type: "string"
+        }
+      ]
+    }));
+    const model = createDatabaseModel({
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return {
+          connections: [
+            {
+              id: "env:redis:default",
+              label: "Default Redis",
+              provider: "redis",
+              source: "environment",
+              urlPreview: "redis://localhost:6379"
+            }
+          ]
+        };
+      },
+      async inspectResource() {
+        throw new Error("not used");
+      },
+      async listNamespaces() {
+        return {
+          cursor: "0",
+          nodes: []
+        };
+      },
+      listResources,
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    });
+
+    render(<DatabaseWorkbench model={model} />);
+
+    expect(await screen.findByText("5s")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("4s")).toBeInTheDocument();
+    }, { timeout: 2000 });
+    expect(listResources).toHaveBeenCalledTimes(2);
   });
 });
