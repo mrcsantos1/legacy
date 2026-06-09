@@ -35,6 +35,14 @@ Rationale: the model is ~90% server orchestration; multi-tab maps to query keys;
 `refetchInterval` replaces the manual poll for live TTL; deletes ~450 lines of
 hand-written samples. Note: supersedes the Effector project default for V1.
 
+## Cost & risk
+
+- Cost: add `@tanstack/react-query`; rewrite `database-model.ts` as hooks;
+  re-point the 917-line workbench; port `database-model.test.ts`. Net code drops.
+- Risk: behavior parity for ghost-key removal + live TTL during the swap.
+  Mitigation: land it inside the Wave 3/5 rewrite, keep tests green per step.
+- Reversible: client-only change; the provider-agnostic API/server is untouched.
+
 ## Follow-up (implementation steps)
 
 - Add `@tanstack/react-query` + a provider in `app/layout.tsx`.
