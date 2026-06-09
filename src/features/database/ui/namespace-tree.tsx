@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import {
     Archive,
     ChevronRight,
+    ChevronsDown,
     FileText,
     Folder,
     FolderOpen,
@@ -11,9 +12,12 @@ import {
 } from "lucide-react";
 
 interface NamespaceTreeProps {
+  readonly canLoadMore: boolean;
+  readonly isLoadingMore: boolean;
   readonly isLoadingNamespaces: boolean;
   readonly nodes: NamespaceNode[];
   readonly onHybridRecordClick: (node: NamespaceNode) => void;
+  readonly onLoadMore: () => void;
   readonly onNodeClick: (node: NamespaceNode) => void;
   readonly onSelectRoot: () => void;
   readonly selectedFolderKey: string;
@@ -22,9 +26,12 @@ interface NamespaceTreeProps {
 }
 
 export function NamespaceTree({
+  canLoadMore,
+  isLoadingMore,
   isLoadingNamespaces,
   nodes,
   onHybridRecordClick,
+  onLoadMore,
   onNodeClick,
   onSelectRoot,
   selectedFolderKey,
@@ -109,6 +116,19 @@ export function NamespaceTree({
           );
         })}
       </div>
+
+      {canLoadMore ? (
+        <button
+          className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-[#C3BAAA] px-2 py-1.5 text-xs text-[#6F675C] transition hover:bg-[#ECE3D6] disabled:opacity-60"
+          disabled={isLoadingMore}
+          onClick={onLoadMore}
+          title="Scan more folders from the server"
+          type="button"
+        >
+          <ChevronsDown aria-hidden="true" size={13} />
+          {isLoadingMore ? "Loading more" : "Load more folders"}
+        </button>
+      ) : null}
     </section>
   );
 }

@@ -53,6 +53,37 @@ describe("shared API client", () => {
     );
   });
 
+  it("serializes preview limit, bytes, and cursor when inspecting a resource", async () => {
+    const fetchSpy = vi.fn(async () =>
+      Response.json({
+        metadata: {},
+        resource: {
+          id: "user%3A1",
+          kind: "key",
+          name: "user:1",
+          path: ["user", "1"],
+          provider: "redis",
+          type: "string"
+        },
+        value: { encoding: "utf8", kind: "scalar", value: "Ada" }
+      })
+    );
+    globalThis.fetch = fetchSpy;
+
+    await inspectResource({
+      bytes: 131072,
+      connectionId: "env:redis:default",
+      cursor: "7",
+      limit: 200,
+      resourceId: "user%3A1"
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/connections/env%3Aredis%3Adefault/resources/user%253A1?limit=200&bytes=131072&cursor=7",
+      expect.objectContaining({ credentials: "same-origin" })
+    );
+  });
+
   it("preserves API error names for callers that need structured handling", async () => {
     globalThis.fetch = vi.fn(async () =>
       Response.json(

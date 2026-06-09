@@ -216,6 +216,70 @@ describe("workspaceReducer active tab updates", () => {
   });
 });
 
+describe("workspaceReducer preview page", () => {
+  it("starts at page 1 and grows only on the active tab", () => {
+    let state = openTab(initialWorkspaceState, "a");
+    state = openTab(state, "b");
+    expect(activeTabOf(state)?.previewPage).toBe(1);
+
+    state = workspaceReducer(state, { page: 3, type: "setPreviewPage" });
+
+    expect(activeTabOf(state)?.previewPage).toBe(3);
+    expect(state.tabs.find((tab) => tab.id === "a")?.previewPage).toBe(1);
+  });
+
+  it("clamps the page to a minimum of 1", () => {
+    let state = openTab(initialWorkspaceState, "a");
+    state = workspaceReducer(state, { page: 0, type: "setPreviewPage" });
+
+    expect(activeTabOf(state)?.previewPage).toBe(1);
+  });
+
+  it("resets when a different resource is selected and keeps it otherwise", () => {
+    let state = openTab(initialWorkspaceState, "a");
+    state = workspaceReducer(state, { resourceId: "r1", type: "selectResource" });
+    state = workspaceReducer(state, { page: 4, type: "setPreviewPage" });
+
+    state = workspaceReducer(state, { resourceId: "r1", type: "selectResource" });
+    expect(activeTabOf(state)?.previewPage).toBe(4);
+
+    state = workspaceReducer(state, { resourceId: "r2", type: "selectResource" });
+    expect(activeTabOf(state)?.previewPage).toBe(1);
+  });
+
+  it("resets when navigating to a folder or clearing the selection", () => {
+    let state = openTab(initialWorkspaceState, "a");
+    state = workspaceReducer(state, { resourceId: "r1", type: "selectResource" });
+    state = workspaceReducer(state, { page: 2, type: "setPreviewPage" });
+
+    state = workspaceReducer(state, { path: ["user"], type: "selectNamespace" });
+    expect(activeTabOf(state)?.previewPage).toBe(1);
+
+    state = workspaceReducer(state, { resourceId: "r1", type: "selectResource" });
+    state = workspaceReducer(state, { page: 2, type: "setPreviewPage" });
+    state = workspaceReducer(state, { type: "clearSelectedResource" });
+    expect(activeTabOf(state)?.previewPage).toBe(1);
+  });
+
+  it("resets only when the purged resources include the selection", () => {
+    let state = openTab(initialWorkspaceState, "a");
+    state = workspaceReducer(state, { resourceId: "r1", type: "selectResource" });
+    state = workspaceReducer(state, { page: 5, type: "setPreviewPage" });
+
+    state = workspaceReducer(state, {
+      resourceIds: ["r9"],
+      type: "purgeResources"
+    });
+    expect(activeTabOf(state)?.previewPage).toBe(5);
+
+    state = workspaceReducer(state, {
+      resourceIds: ["r1"],
+      type: "purgeResources"
+    });
+    expect(activeTabOf(state)?.previewPage).toBe(1);
+  });
+});
+
 describe("activeTabOf", () => {
   it("returns null when no tab is active", () => {
     expect(activeTabOf(initialWorkspaceState)).toBeNull();

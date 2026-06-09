@@ -21,6 +21,7 @@ export interface WorkspaceTab {
   readonly label: string;
   readonly namespaceNodes: NamespaceNode[];
   readonly namespacePath: string[];
+  readonly previewPage: number;
   readonly search: string;
   readonly searchDraft: string;
   readonly selectedResourceId: string | null;
@@ -46,7 +47,8 @@ export type WorkspaceAction =
   | { readonly type: "commitSearch"; readonly value: string }
   | { readonly resourceId: string; readonly type: "selectResource" }
   | { readonly type: "clearSelectedResource" }
-  | { readonly resourceIds: string[]; readonly type: "purgeResources" };
+  | { readonly resourceIds: string[]; readonly type: "purgeResources" }
+  | { readonly page: number; readonly type: "setPreviewPage" };
 
 export const initialWorkspaceState: WorkspaceState = {
   activeTabId: null,
@@ -106,6 +108,7 @@ export function workspaceReducer(
       return mapActiveTab(state, (tab) => ({
         ...tab,
         namespacePath: action.path,
+        previewPage: 1,
         selectedResourceId: null
       }));
     case "mergeNamespaces":
@@ -124,22 +127,36 @@ export function workspaceReducer(
     case "selectResource":
       return mapActiveTab(state, (tab) => ({
         ...tab,
+        previewPage:
+          tab.selectedResourceId === action.resourceId ? tab.previewPage : 1,
         selectedResourceId: action.resourceId
       }));
     case "clearSelectedResource":
-      return mapActiveTab(state, (tab) => ({ ...tab, selectedResourceId: null }));
-    case "purgeResources":
       return mapActiveTab(state, (tab) => ({
         ...tab,
-        namespaceNodes: removeNamespaceNodesForResourceIds(
-          tab.namespaceNodes,
-          action.resourceIds
-        ),
-        selectedResourceId:
+        previewPage: 1,
+        selectedResourceId: null
+      }));
+    case "purgeResources":
+      return mapActiveTab(state, (tab) => {
+        const selectionPurged =
           tab.selectedResourceId !== null &&
-          action.resourceIds.includes(tab.selectedResourceId)
-            ? null
-            : tab.selectedResourceId
+          action.resourceIds.includes(tab.selectedResourceId);
+
+        return {
+          ...tab,
+          namespaceNodes: removeNamespaceNodesForResourceIds(
+            tab.namespaceNodes,
+            action.resourceIds
+          ),
+          previewPage: selectionPurged ? 1 : tab.previewPage,
+          selectedResourceId: selectionPurged ? null : tab.selectedResourceId
+        };
+      });
+    case "setPreviewPage":
+      return mapActiveTab(state, (tab) => ({
+        ...tab,
+        previewPage: Math.max(1, action.page)
       }));
     default:
       return state;
@@ -188,6 +205,7 @@ function createTab(id: string, label: string): WorkspaceTab {
     label,
     namespaceNodes: [],
     namespacePath: [],
+    previewPage: 1,
     search: "",
     searchDraft: "",
     selectedResourceId: null

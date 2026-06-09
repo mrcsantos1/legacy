@@ -2,6 +2,8 @@
 
 import {
     DatabaseApiProvider,
+    LIST_MAX_PAGES,
+    PREVIEW_MAX_PAGE,
     useConnectionsQuery,
     useCreateConnectionMutation,
     useDeleteConnectionMutation,
@@ -69,7 +71,8 @@ import { ConnectionTabStrip } from "./tab-strip";
 import {
     describeValueDisplay,
     formatPreviewForEditing,
-    getResourceEmptyMessage
+    getResourceEmptyMessage,
+    previewMetaOf
 } from "./value-format";
 import { ValueViewer } from "./value-viewer";
 import { CollapsedRail, ErrorBanner } from "./workbench-states";
@@ -106,6 +109,7 @@ function WorkbenchView() {
   const activeTab = activeTabOf(state);
   const activeConnectionId = activeTab?.id ?? null;
   const namespacePath = activeTab?.namespacePath ?? EMPTY_PATH;
+  const previewPage = activeTab?.previewPage ?? 1;
   const search = activeTab?.search ?? "";
   const searchDraft = activeTab?.searchDraft ?? "";
   const selectedResourceId = activeTab?.selectedResourceId ?? null;
@@ -119,7 +123,8 @@ function WorkbenchView() {
   );
   const inspectionQuery = useInspectionQuery(
     activeConnectionId,
-    selectedResourceId
+    selectedResourceId,
+    previewPage
   );
   const createConnection = useCreateConnectionMutation();
   const deleteConnection = useDeleteConnectionMutation();
@@ -150,8 +155,10 @@ function WorkbenchView() {
   const namespacesData = namespacesQuery.data;
   useEffect(() => {
     if (namespacesData) {
+      // mergeNamespaceNodes replaces all children of the merged path, so the
+      // dispatch must always carry the flattened nodes of every loaded page.
       dispatch({
-        nodes: namespacesData.nodes,
+        nodes: namespacesData.pages.flatMap((page) => page.nodes),
         path: namespacePath,
         type: "mergeNamespaces"
       });
@@ -187,9 +194,9 @@ function WorkbenchView() {
   ]);
 
   const inspection = inspectionQuery.data ?? null;
-  const resourcesData = resourcesQuery.data?.resources;
+  const resourcesData = resourcesQuery.data;
   const visibleResources = useMemo(
-    () => (resourcesData ?? []).slice(0, 200),
+    () => resourcesData?.pages.flatMap((page) => page.resources) ?? [],
     [resourcesData]
   );
   const selectedFolderLabel =
@@ -199,13 +206,31 @@ function WorkbenchView() {
     hasConnection: activeConnectionId !== null,
     hasSearch: search.trim().length > 0
   });
-  const scanStatus =
-    (resourcesQuery.data?.cursor ?? "0") === "0"
-      ? "Scan complete"
-      : "Scan partial";
+  const scanStatus = resourcesQuery.hasNextPage ? "Scan partial" : "Scan complete";
   const hasSelectedRecord = inspection !== null;
   const recordEditorValue = formatPreviewForEditing(inspection?.value);
   const valueDisplayLabel = describeValueDisplay(inspection?.value);
+  const previewMeta = previewMetaOf(inspection?.value ?? undefined);
+  const canLoadMorePreview =
+    previewMeta?.truncated === true && previewPage < PREVIEW_MAX_PAGE;
+  const isLoadingMorePreview = inspectionQuery.isPlaceholderData;
+  // The editor textarea is uncontrolled and remounts via key. The key tracks
+  // the page whose data is actually rendered, so it only changes (and reloads
+  // defaultValue) once fresh load-more data arrives, never while typing.
+  const renderedPreviewPage = isLoadingMorePreview
+    ? Math.max(1, previewPage - 1)
+    : previewPage;
+  const editorKey = `${selectedResourceId ?? "none"}:p${renderedPreviewPage}`;
+  const resourcePages = resourcesQuery.data?.pages.length ?? 0;
+  const hasMoreResources =
+    resourcesQuery.hasNextPage === true && resourcePages < LIST_MAX_PAGES;
+  const namespacePages = namespacesQuery.data?.pages.length ?? 0;
+  const hasMoreNamespaces =
+    namespacesQuery.hasNextPage === true && namespacePages < LIST_MAX_PAGES;
+  const isRefreshingResources =
+    resourcesQuery.isFetching &&
+    !resourcesQuery.isFetchingNextPage &&
+    visibleResources.length > 0;
 
   function refreshVisibleData() {
     if (activeConnectionId === null) {
@@ -490,9 +515,12 @@ function WorkbenchView() {
               url={url}
             />
             <NamespaceTree
+              canLoadMore={hasMoreNamespaces}
+              isLoadingMore={namespacesQuery.isFetchingNextPage}
               isLoadingNamespaces={units.isLoadingNamespaces}
               nodes={units.namespaceNodes}
               onHybridRecordClick={handleHybridRecordClick}
+              onLoadMore={() => void namespacesQuery.fetchNextPage()}
               onNodeClick={handleNamespaceNodeClick}
               onSelectRoot={() => units.namespaceSelected([])}
               selectedFolderKey={selectedFolderKey}
@@ -566,15 +594,25 @@ function WorkbenchView() {
           <div className="min-h-0 flex-1 overflow-auto">
             {hasSelectedRecord && units.inspection ? (
               <ValueViewer
+                canLoadMore={canLoadMorePreview}
                 editorDefaultValue={recordEditorValue}
+                editorKey={editorKey}
                 editorRef={editorRef}
                 inspection={units.inspection}
+                isLoadingMore={isLoadingMorePreview}
+                onLoadMore={() =>
+                  dispatch({ page: previewPage + 1, type: "setPreviewPage" })
+                }
                 valueDisplayLabel={valueDisplayLabel}
               />
             ) : (
               <ResourceGrid
                 emptyResourceMessage={emptyResourceMessage}
+                hasMore={hasMoreResources}
+                isLoadingMore={resourcesQuery.isFetchingNextPage}
                 isLoadingResources={units.isLoadingResources}
+                isRefreshing={isRefreshingResources}
+                onLoadMore={() => void resourcesQuery.fetchNextPage()}
                 onResourceSelected={units.resourceSelected}
                 resources={visibleResources}
                 selectedResourceId={units.selectedResourceId}

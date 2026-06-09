@@ -1,14 +1,18 @@
 import type { ResourceDescriptor } from "@/shared/api/client";
 
 import { clsx } from "clsx";
-import { Database } from "lucide-react";
+import { ChevronsDown, Database } from "lucide-react";
 
 import { formatTtl } from "./value-format";
 import { EmptyState, SkeletonRows } from "./workbench-states";
 
 interface ResourceGridProps {
   readonly emptyResourceMessage: string;
+  readonly hasMore: boolean;
+  readonly isLoadingMore: boolean;
   readonly isLoadingResources: boolean;
+  readonly isRefreshing: boolean;
+  readonly onLoadMore: () => void;
   readonly onResourceSelected: (resourceId: string) => void;
   readonly resources: ResourceDescriptor[];
   readonly selectedResourceId: string | null;
@@ -16,13 +20,16 @@ interface ResourceGridProps {
 
 export function ResourceGrid({
   emptyResourceMessage,
+  hasMore,
+  isLoadingMore,
   isLoadingResources,
+  isRefreshing,
+  onLoadMore,
   onResourceSelected,
   resources,
   selectedResourceId
 }: ResourceGridProps) {
   const isInitialLoad = isLoadingResources && resources.length === 0;
-  const isRefreshing = isLoadingResources && resources.length > 0;
   const isEmpty = !isLoadingResources && resources.length === 0;
 
   return (
@@ -86,6 +93,21 @@ export function ResourceGrid({
           )}
         </tbody>
       </table>
+
+      {hasMore ? (
+        <div className="flex justify-center py-3">
+          <button
+            className="inline-flex items-center gap-1 rounded-md border border-[#C3BAAA] bg-[#FBF7EF] px-3 py-1.5 text-xs text-[var(--legacy-ink)] transition hover:bg-[#EFE6D8] disabled:opacity-60"
+            disabled={isLoadingMore}
+            onClick={onLoadMore}
+            title="Scan more records from the server"
+            type="button"
+          >
+            <ChevronsDown aria-hidden="true" size={13} />
+            {isLoadingMore ? "Loading more" : "Load more records"}
+          </button>
+        </div>
+      ) : null}
 
       {isEmpty ? <EmptyState icon={Database} title={emptyResourceMessage} /> : null}
     </>

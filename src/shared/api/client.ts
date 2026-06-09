@@ -26,7 +26,10 @@ export interface DatabaseApi {
   deleteSessionConnection(connectionId: string): Promise<{ deleted: boolean }>;
   getConnections(): Promise<ConnectionsResponse>;
   inspectResource(input: {
+    readonly bytes?: number;
     readonly connectionId: string;
+    readonly cursor?: string;
+    readonly limit?: number;
     readonly resourceId: string;
   }): Promise<ResourceInspection>;
   listNamespaces(input: {
@@ -147,11 +150,28 @@ export async function listResources(input: {
 }
 
 export async function inspectResource(input: {
+  readonly bytes?: number;
   readonly connectionId: string;
+  readonly cursor?: string;
+  readonly limit?: number;
   readonly resourceId: string;
 }): Promise<ResourceInspection> {
+  const query = new URLSearchParams();
+
+  if (input.limit !== undefined) {
+    query.set("limit", String(input.limit));
+  }
+
+  if (input.bytes !== undefined) {
+    query.set("bytes", String(input.bytes));
+  }
+
+  if (input.cursor) {
+    query.set("cursor", input.cursor);
+  }
+
   return requestJson<ResourceInspection>(
-    `/api/connections/${encodeURIComponent(input.connectionId)}/resources/${encodeURIComponent(input.resourceId)}`
+    `/api/connections/${encodeURIComponent(input.connectionId)}/resources/${encodeURIComponent(input.resourceId)}${formatQuery(query)}`
   );
 }
 

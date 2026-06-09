@@ -6,6 +6,69 @@ import type { DatabaseApi } from "@/shared/api/client";
 
 import { DatabaseWorkbench } from "./database-workbench";
 
+function sessionConnections() {
+  return {
+    connections: [
+      {
+        id: "session:default",
+        label: "Default Redis",
+        provider: "redis" as const,
+        source: "session" as const,
+        urlPreview: "redis://localhost:6379"
+      }
+    ]
+  };
+}
+
+function keyResource(id: string, name: string) {
+  return {
+    id,
+    kind: "key" as const,
+    name,
+    path: name.split(":"),
+    provider: "redis" as const,
+    ttlSeconds: 60,
+    type: "string"
+  };
+}
+
+function folderNode(label: string) {
+  return {
+    depth: 0,
+    hasChildren: true,
+    id: label,
+    kind: "folder" as const,
+    label,
+    path: [label]
+  };
+}
+
+function scalarInspection(input: {
+  readonly id: string;
+  readonly name: string;
+  readonly truncated?: boolean;
+  readonly value: string;
+}) {
+  return {
+    metadata: {},
+    resource: {
+      id: input.id,
+      kind: "key" as const,
+      name: input.name,
+      path: input.name.split(":"),
+      provider: "redis" as const,
+      ttlSeconds: -1,
+      type: "string"
+    },
+    value: {
+      encoding: "utf8" as const,
+      kind: "scalar" as const,
+      meta: { truncated: input.truncated ?? false },
+      value: input.value
+    }
+  };
+}
+
 describe("DatabaseWorkbench", () => {
   it("renders connections, resource grid, and selected resource inspector", async () => {
     const api: DatabaseApi = {
@@ -182,6 +245,12 @@ describe("DatabaseWorkbench", () => {
     expect(await screen.findByText("Record content")).toBeInTheDocument();
     expect(screen.getByText("Detected JSON string")).toBeInTheDocument();
     const editor = screen.getByLabelText("Record value");
+
+    expect((editor as HTMLTextAreaElement).value).toBe(
+      "{\"name\":\"W22Prime\",\"functions\":[{\"name\":\"Find Electrical Project Calculation System\"}]}"
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Format" }));
 
     expect((editor as HTMLTextAreaElement).value).toContain(`"name": "W22Prime"`);
     expect((editor as HTMLTextAreaElement).value).toContain(`"functions": [`);
@@ -425,5 +494,249 @@ describe("DatabaseWorkbench", () => {
       { timeout: 2000 }
     );
     expect(listResources).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads more records through the scan cursor", async () => {
+    const listResources = vi.fn(async (input: { cursor?: string }) =>
+      input.cursor === "5"
+        ? { cursor: "0", resources: [keyResource("user%3A2", "user:2")] }
+        : { cursor: "5", resources: [keyResource("user%3A1", "user:1")] }
+    );
+    const api: DatabaseApi = {
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return sessionConnections();
+      },
+      async inspectResource() {
+        throw new Error("not used");
+      },
+      async listNamespaces() {
+        return { cursor: "0", nodes: [] };
+      },
+      listResources,
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    };
+
+    render(<DatabaseWorkbench api={api} />);
+
+    expect(
+      await screen.findByRole("button", { name: /inspect user:1/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Scan partial")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /inspect user:2/i })
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Load more records" })
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /inspect user:2/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /inspect user:1/i })
+    ).toBeInTheDocument();
+    expect(
+      listResources.mock.calls.some((call) => call[0]?.cursor === "5")
+    ).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByText("Scan complete")).toBeInTheDocument();
+    });
+  });
+
+  it("loads more folders through the namespace cursor", async () => {
+    const listNamespaces = vi.fn(async (input: { cursor?: string }) =>
+      input.cursor === "7"
+        ? { cursor: "0", nodes: [folderNode("order")] }
+        : { cursor: "7", nodes: [folderNode("user")] }
+    );
+    const api: DatabaseApi = {
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return sessionConnections();
+      },
+      async inspectResource() {
+        throw new Error("not used");
+      },
+      listNamespaces,
+      async listResources() {
+        return { cursor: "0", resources: [] };
+      },
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    };
+
+    render(<DatabaseWorkbench api={api} />);
+
+    expect(
+      await screen.findByRole("button", { name: "Open folder user" })
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Load more folders" })
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Open folder order" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Open folder user" })
+    ).toBeInTheDocument();
+    expect(
+      listNamespaces.mock.calls.some((call) => call[0]?.cursor === "7")
+    ).toBe(true);
+  });
+
+  it("requests a larger preview on demand and resets it on selection change", async () => {
+    const inspectResource = vi.fn(
+      async (input: { limit?: number; resourceId: string }) =>
+        scalarInspection({
+          id: input.resourceId,
+          name: input.resourceId === "user%3A1" ? "user:1" : "user:2",
+          truncated: true,
+          value: `${
+            input.resourceId === "user%3A1" ? "first" : "second"
+          }-limit-${input.limit ?? 0}`
+        })
+    );
+    const api: DatabaseApi = {
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return sessionConnections();
+      },
+      inspectResource,
+      async listNamespaces() {
+        return { cursor: "0", nodes: [] };
+      },
+      async listResources() {
+        return {
+          cursor: "0",
+          resources: [
+            keyResource("user%3A1", "user:1"),
+            keyResource("user%3A2", "user:2")
+          ]
+        };
+      },
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    };
+
+    render(<DatabaseWorkbench api={api} />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /inspect user:1/i })
+    );
+    expect(
+      await screen.findByDisplayValue("first-limit-100")
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+    expect(
+      await screen.findByDisplayValue("first-limit-200")
+    ).toBeInTheDocument();
+    expect(
+      inspectResource.mock.calls.some((call) => call[0]?.limit === 200)
+    ).toBe(true);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Back to folder" })
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /inspect user:2/i })
+    );
+
+    expect(
+      await screen.findByDisplayValue("second-limit-100")
+    ).toBeInTheDocument();
+  });
+
+  it("discards the previous inspection payload when the selection changes", async () => {
+    let firstResourceCalls = 0;
+    const inspectResource = vi.fn(async (input: { resourceId: string }) => {
+      if (input.resourceId === "user%3A1") {
+        firstResourceCalls += 1;
+        return scalarInspection({
+          id: "user%3A1",
+          name: "user:1",
+          value: firstResourceCalls === 1 ? "v1" : "v1-updated"
+        });
+      }
+
+      return scalarInspection({ id: "user%3A2", name: "user:2", value: "v2" });
+    });
+    const api: DatabaseApi = {
+      async createSessionConnection() {
+        throw new Error("not used");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return sessionConnections();
+      },
+      inspectResource,
+      async listNamespaces() {
+        return { cursor: "0", nodes: [] };
+      },
+      async listResources() {
+        return {
+          cursor: "0",
+          resources: [
+            keyResource("user%3A1", "user:1"),
+            keyResource("user%3A2", "user:2")
+          ]
+        };
+      },
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    };
+
+    render(<DatabaseWorkbench api={api} />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /inspect user:1/i })
+    );
+    expect(await screen.findByDisplayValue("v1")).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Back to folder" })
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /inspect user:2/i })
+    );
+    expect(await screen.findByDisplayValue("v2")).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Back to folder" })
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /inspect user:1/i })
+    );
+
+    // gcTime: 0 — the stale first payload must not flash back from cache.
+    expect(screen.queryByDisplayValue("v1")).not.toBeInTheDocument();
+    expect(await screen.findByDisplayValue("v1-updated")).toBeInTheDocument();
   });
 });

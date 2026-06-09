@@ -1,4 +1,6 @@
 import {
+    keepPreviousData,
+    useInfiniteQuery,
     useMutation,
     useQuery,
     useQueryClient
@@ -9,12 +11,21 @@ import {
     databaseApi,
     type DatabaseApi,
     type MutationRequest,
-    type NewConnectionInput
+    type NamespaceListResult,
+    type NewConnectionInput,
+    type ResourceListResult
 } from "@/shared/api/client";
 
 import { resourceScopeForSearch } from "./namespace-tree";
 
 export const LIVENESS_INTERVAL_MS = 1000;
+
+export const PREVIEW_LIMIT_STEP = 100;
+export const PREVIEW_BYTES_STEP = 64 * 1024;
+export const PREVIEW_MAX_PAGE = 10;
+
+export const LIST_PAGE_SIZE = 100;
+export const LIST_MAX_PAGES = 10;
 
 const DatabaseApiContext = createContext<DatabaseApi>(databaseApi);
 
@@ -52,10 +63,18 @@ export function useConnectionsQuery() {
 export function useNamespacesQuery(connectionId: string | null, path: string[]) {
   const api = useDatabaseApi();
 
-  return useQuery({
+  return useInfiniteQuery({
     enabled: connectionId !== null,
-    queryFn: () =>
-      api.listNamespaces({ connectionId: connectionId ?? "", count: 100, path }),
+    getNextPageParam: (lastPage: NamespaceListResult) =>
+      nextCursorOf(lastPage.cursor),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      api.listNamespaces({
+        connectionId: connectionId ?? "",
+        count: LIST_PAGE_SIZE,
+        cursor: pageParam,
+        path
+      }),
     queryKey: queryKeys.namespaces(connectionId ?? "", path),
     refetchInterval: LIVENESS_INTERVAL_MS
   });
@@ -68,12 +87,17 @@ export function useResourcesQuery(
 ) {
   const api = useDatabaseApi();
 
-  return useQuery({
+  return useInfiniteQuery({
     enabled: connectionId !== null,
-    queryFn: () =>
+    getNextPageParam: (lastPage: ResourceListResult) =>
+      nextCursorOf(lastPage.cursor),
+    initialPageParam: undefined as string | undefined,
+    placeholderData: keepPreviousData,
+    queryFn: ({ pageParam }) =>
       api.listResources({
         connectionId: connectionId ?? "",
-        count: 100,
+        count: LIST_PAGE_SIZE,
+        cursor: pageParam,
         namespace,
         scope: resourceScopeForSearch(search),
         search
@@ -83,20 +107,31 @@ export function useResourcesQuery(
   });
 }
 
+function nextCursorOf(cursor: string): string | undefined {
+  return cursor !== "" && cursor !== "0" ? cursor : undefined;
+}
+
 export function useInspectionQuery(
   connectionId: string | null,
-  resourceId: string | null
+  resourceId: string | null,
+  previewPage = 1
 ) {
   const api = useDatabaseApi();
+  const page = Math.min(Math.max(previewPage, 1), PREVIEW_MAX_PAGE);
 
   return useQuery({
     enabled: connectionId !== null && resourceId !== null,
+    gcTime: 0,
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[2] === resourceId ? previousData : undefined,
     queryFn: () =>
       api.inspectResource({
+        bytes: page * PREVIEW_BYTES_STEP,
         connectionId: connectionId ?? "",
+        limit: page * PREVIEW_LIMIT_STEP,
         resourceId: resourceId ?? ""
       }),
-    queryKey: queryKeys.inspection(connectionId ?? "", resourceId ?? ""),
+    queryKey: [...queryKeys.inspection(connectionId ?? "", resourceId ?? ""), page],
     refetchInterval: LIVENESS_INTERVAL_MS,
     retry: false
   });

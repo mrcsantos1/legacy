@@ -1,5 +1,7 @@
 import type { DataPreview, DataPreviewMeta } from "@/shared/api/client";
 
+// Large value safety: initial render must stay compact/raw. Pretty JSON
+// formatting happens only through an explicit user action in the viewer.
 export function formatPreviewForEditing(value: DataPreview | undefined): string {
   if (!value) {
     return "";
@@ -7,30 +9,16 @@ export function formatPreviewForEditing(value: DataPreview | undefined): string 
 
   switch (value.kind) {
     case "scalar":
-      return formatScalarForEditing(value.value);
+      return value.value ?? "";
     case "object":
-      return JSON.stringify(value.value, null, 2);
+      return JSON.stringify(value.value);
     case "list":
-      return JSON.stringify(value.value, null, 2);
+      return JSON.stringify(value.value);
     case "zset":
-      return JSON.stringify(value.value, null, 2);
+      return JSON.stringify(value.value);
     case "unsupported":
       return value.message;
   }
-}
-
-export function formatScalarForEditing(value: string | null): string {
-  if (value === null) {
-    return "";
-  }
-
-  const parsedJson = tryParseJson(value);
-
-  if (parsedJson !== null) {
-    return JSON.stringify(parsedJson, null, 2);
-  }
-
-  return value;
 }
 
 export function describeValueDisplay(value: DataPreview | undefined): string {

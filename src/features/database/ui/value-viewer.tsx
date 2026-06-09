@@ -3,7 +3,16 @@ import type { RefObject } from "react";
 import type { ResourceInspection } from "@/shared/api/client";
 
 import { clsx } from "clsx";
-import { Braces, Check, Code, Copy, Pencil } from "lucide-react";
+import {
+    Braces,
+    Check,
+    ChevronsDown,
+    Code,
+    Copy,
+    FoldVertical,
+    Pencil,
+    TriangleAlert
+} from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -14,18 +23,26 @@ import {
 } from "./value-format";
 
 interface ValueViewerProps {
+  readonly canLoadMore: boolean;
   readonly editorDefaultValue: string;
+  readonly editorKey: string;
   readonly editorRef: RefObject<HTMLTextAreaElement | null>;
   readonly inspection: ResourceInspection;
+  readonly isLoadingMore: boolean;
+  readonly onLoadMore: () => void;
   readonly valueDisplayLabel: string;
 }
 
 type ValueView = "edit" | "pretty";
 
 export function ValueViewer({
+  canLoadMore,
   editorDefaultValue,
+  editorKey,
   editorRef,
   inspection,
+  isLoadingMore,
+  onLoadMore,
   valueDisplayLabel
 }: ValueViewerProps) {
   const [view, setView] = useState<ValueView>("edit");
@@ -61,6 +78,17 @@ export function ValueViewer({
     setView("edit");
   }
 
+  function handleCollapse() {
+    const parsed = tryParseJson(currentText());
+
+    if (parsed === null || !editorRef.current) {
+      return;
+    }
+
+    editorRef.current.value = JSON.stringify(parsed);
+    setView("edit");
+  }
+
   return (
     <div className="flex min-h-full flex-col p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -91,6 +119,20 @@ export function ValueViewer({
         </span>
       </div>
 
+      {meta?.truncated ? (
+        <div
+          className="mb-2 flex items-center gap-2 rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+          role="status"
+          title="Only a bounded preview of this value is loaded. Saving writes the visible preview, not the full stored value."
+        >
+          <TriangleAlert aria-hidden="true" className="shrink-0" size={14} />
+          <span>
+            Preview only — this value is larger than the loaded preview.
+            {canLoadMore ? " Use Load more to fetch a larger preview." : ""}
+          </span>
+        </div>
+      ) : null}
+
       <div className="mb-2 flex items-center justify-between gap-2">
         {canPretty ? (
           <div
@@ -116,6 +158,18 @@ export function ValueViewer({
         )}
 
         <div className="flex items-center gap-1">
+          {canLoadMore ? (
+            <button
+              className="inline-flex items-center gap-1 rounded-md border border-[#C3BAAA] bg-[#FBF7EF] px-2 py-1 text-xs text-[var(--legacy-ink)] transition hover:bg-[#EFE6D8] disabled:opacity-60"
+              disabled={isLoadingMore}
+              onClick={onLoadMore}
+              title="Fetch a larger bounded preview of this value from the server"
+              type="button"
+            >
+              <ChevronsDown aria-hidden="true" size={13} />
+              {isLoadingMore ? "Loading" : "Load more"}
+            </button>
+          ) : null}
           {canPretty ? (
             <button
               className="inline-flex items-center gap-1 rounded-md border border-[#C3BAAA] bg-[#FBF7EF] px-2 py-1 text-xs text-[var(--legacy-ink)] transition hover:bg-[#EFE6D8]"
@@ -125,6 +179,17 @@ export function ValueViewer({
             >
               <Braces aria-hidden="true" size={13} />
               Format
+            </button>
+          ) : null}
+          {canPretty ? (
+            <button
+              className="inline-flex items-center gap-1 rounded-md border border-[#C3BAAA] bg-[#FBF7EF] px-2 py-1 text-xs text-[var(--legacy-ink)] transition hover:bg-[#EFE6D8]"
+              onClick={handleCollapse}
+              title="Collapse value to compact single-line JSON"
+              type="button"
+            >
+              <FoldVertical aria-hidden="true" size={13} />
+              Collapse
             </button>
           ) : null}
           <button
@@ -150,7 +215,7 @@ export function ValueViewer({
           activeView !== "edit" && "hidden"
         )}
         defaultValue={editorDefaultValue}
-        key={inspection.resource.id}
+        key={editorKey}
         ref={editorRef}
         spellCheck={false}
       />
