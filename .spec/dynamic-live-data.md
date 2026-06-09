@@ -1,67 +1,45 @@
-# Dynamic Live Data Requirement
+# Dynamic Live Data
 
-## Status
+Status: Required — Wave 7
 
-Required for Legacy.
+## Contract
 
-## Problem
+- While a view is open, visible DB state is live, not a static snapshot.
+- Covers: TTL (content panel, inspector, resource table), record metadata,
+  key existence in tree + table, selected record after expire/delete/rename/update.
 
-Legacy must not show database state as a static snapshot after the user opens a
-key, folder, or record. Redis values and metadata can change without another
-click from the user, especially TTL. A TTL shown on screen that only changes
-after reopening the key is stale and misleading.
+## TTL
 
-## Requirement
+- Counts down client-side from the last server-observed TTL + its timestamp;
+  no per-second server calls.
+- Server reconciles TTL on explicit refresh and bounded background intervals.
+- Persistent keys stay persistent.
+- Color tiers (each with a tooltip explaining its meaning):
+  persistent → neutral · healthy → normal · near expiry → warning ·
+  critical (~0) → danger · expired/not found → removed.
 
-All visible database state in the application must be dynamic while the relevant
-view is open.
+## Stale keys (no flicker)
 
-This includes:
+- A key proven gone (`NotFoundError` or expiry) is removed immediately from tree
+  + table; the selected record clears.
+- Remove only the missing key; never clear all tree/resource state to recover.
+- Refresh preserves existing visible rows while the next scan is pending;
+  use localized loading indicators, not a full-workbench refresh.
 
-- TTL displayed in the record content panel, record inspector, and resource
-  table.
-- Record metadata shown in side panels.
-- Record existence in the left navigation tree and center resource table.
-- Selected record state after expire, delete, rename, update, or external Redis
-  changes detected by refresh/polling.
+## Acceptance
 
-## TTL Behavior
+- Open key with TTL: the value changes over time without reselecting.
+- After setting a new TTL: the display starts updating from the new value.
+- Expired key: record/inspector stop showing it; the key leaves tree + table.
+- `NotFoundError` on a visible key: it disappears immediately, no blink.
+- Low TTL draws attention; tooltips explain TTL + actions.
+- Tests cover live TTL countdown and targeted stale-key removal.
 
-- TTL values must update automatically while a record is selected.
-- The user must not need to click the key again, reopen the record, navigate
-  away, or manually refresh just to see TTL countdown changes.
-- A persistent key must continue to display as persistent.
-- A key with finite TTL must visibly count down or be refreshed often enough
-  that the displayed value does not remain static.
-- When TTL reaches expiration and the key no longer exists, the UI must clear
-  the selected record and remove that key from the left tree and resource table.
+## Non-requirements
 
-## Dynamic UI Behavior
+- No millisecond-accurate TTL. No Redis keyspace subscriptions.
+- Liveness must not break the provider-agnostic boundary or add blocking reads.
 
-- The left tree and resource table must not retain records that the application
-  knows no longer exist.
-- Any API response that proves a selected key no longer exists must immediately
-  remove that key from visible UI state.
-- Mutations that change key identity or existence must refresh affected visible
-  metadata and navigation state without requiring another user click.
-- Polling or scheduled refresh must be bounded and provider-aware. It must not
-  introduce blocking Redis keyspace reads.
+## Verify
 
-## Acceptance Criteria
-
-- Opening a Redis key with TTL shows a TTL value that changes over time without
-  reselecting the key.
-- After setting a new TTL from the UI, the displayed TTL begins updating from
-  the new value automatically.
-- When a selected key expires, the record view and inspector stop showing it,
-  and the key is removed from the left tree and center table.
-- If Redis reports `NotFoundError` for a visible key, the key disappears from
-  the UI immediately.
-- Automated tests cover live TTL refresh and stale-key removal.
-
-## Non-Requirements
-
-- The UI does not need millisecond-accurate TTL rendering.
-- The application does not need to subscribe to Redis keyspace notifications for
-  this requirement.
-- Dynamic refresh must not compromise the provider-agnostic API boundary.
+typecheck · lint · test · build
