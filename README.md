@@ -31,7 +31,7 @@ inspection, but the public API and UI contracts are still evolving.
 - Effector and effector-react
 - Redis adapter using `redis`
 - Vitest and Testing Library
-- Docker and Docker Compose
+- Docker
 - pnpm
 
 ## Local Development
@@ -45,24 +45,14 @@ Open `http://localhost:3000`.
 
 ## Docker
 
-Run the web app only:
+Build and run the standalone image:
 
 ```powershell
-docker compose up
+docker build -t legacy:local .
+docker run --rm -p 3000:3000 legacy:local
 ```
 
-Run the web app with disposable demo Redis:
-
-```powershell
-docker compose --profile demo-redis up
-```
-
-To connect to Redis, set `LEGACY_DEFAULT_REDIS_URL` or enter a Redis URL in the
-app. For the demo Redis profile, use:
-
-```text
-redis://demo-redis:6379
-```
+Open `http://localhost:3000` and enter a Redis URL in the app to connect.
 
 ## Verification
 
@@ -73,7 +63,7 @@ pnpm run typecheck
 pnpm run lint
 pnpm test
 pnpm run build
-docker compose build web
+docker build -t legacy:local .
 ```
 
 ## Architecture

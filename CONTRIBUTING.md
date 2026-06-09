@@ -18,6 +18,7 @@ Open `http://localhost:3000`.
 - Provider-specific code stays behind the database adapter boundary.
 - New behavior is covered by tests.
 - Public behavior changes are reflected in `SPEC.md` or `README.md`.
+- CI (typecheck, lint, test, build, docker build) is green; it is required to merge.
 - Verification passes locally:
 
 ```powershell
@@ -25,7 +26,7 @@ pnpm run typecheck
 pnpm run lint
 pnpm test
 pnpm run build
-docker compose build web
+docker build -t legacy:local .
 ```
 
 ## Coding Standards
@@ -40,5 +41,7 @@ docker compose build web
 ## AI Tooling
 
 AI assistants can help with implementation, tests, and documentation, but they
-must follow `AGENTS.md` and `SPEC.md`. A contribution is acceptable because it is
-correct, reviewed, and verified; not because it was generated quickly.
+must follow `AGENTS.md` and `SPEC.md`. Treat AI-generated code as a draft until it
+is reviewed, tested, and aligned with `SPEC.md`. A contribution is acceptable
+because it is correct, reviewed, and verified; not because it was generated
+quickly.

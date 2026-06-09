@@ -8,12 +8,11 @@ state model, and UI concepts must remain provider-agnostic enough to support
 SQL providers later.
 
 The project is a Next.js 16 App Router application using strict TypeScript,
-Tailwind CSS, Effector, pnpm, Docker, and Docker Compose.
+Tailwind CSS, Effector, pnpm, and Docker.
 
 ## Product Goals
 
 - Let users connect to reachable Redis instances, local or remote.
-- Provide an optional disposable Redis service for local exploration.
 - Keep provider-specific behavior behind server-only adapters.
 - Keep frontend state and API routes unaware of concrete provider internals.
 - Support safe inspection and basic management workflows.
@@ -101,22 +100,25 @@ The frontend must only talk to these generic routes.
 
 ## Connection And Credential Model
 
-- `LEGACY_DEFAULT_REDIS_URL` optionally configures a server-defined Redis
-  connection.
-- Users may create temporary Redis connections from the UI.
-- Temporary credentials are stored server-side in memory and scoped by an HTTP
-  session cookie.
+- Users create connections from the UI by entering a Redis URL.
+- The browser may remember entered connections locally for up to 7 days so users
+  do not retype them; remembered entries never auto-connect.
+- The server opens a connection only after an explicit connect action and keeps
+  active connections in memory, scoped by an HTTP session cookie.
 - Raw credentials are never returned to the browser.
-- Temporary connections are cleared when the app restarts.
+- Active connections are cleared when the app restarts.
 
 ## Docker Strategy
 
-`compose.yaml` starts the Legacy web app by default. A `demo-redis` profile
-starts a local Redis service for disposable test data.
+Legacy ships as a single standalone Next.js image. Build and run it with plain
+Docker:
 
-The web service binds to localhost by default and accepts `LEGACY_WEB_PORT`
-overrides. Demo Redis is not published to the host by default. Users can point
-Legacy at Redis through `LEGACY_DEFAULT_REDIS_URL` or the UI connection form.
+```powershell
+docker build -t legacy:local .
+docker run --rm -p 3000:3000 legacy:local
+```
+
+Users point Legacy at Redis through the UI connection form.
 
 ## Development Discipline
 
@@ -141,8 +143,6 @@ The implementation must pass:
 - `pnpm test`
 - `pnpm run build`
 
-Docker smoke checks should include:
+Docker smoke check:
 
-- `docker compose build web`
-- `docker compose up`
-- `docker compose --profile demo-redis up`
+- `docker build -t legacy:local .`

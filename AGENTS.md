@@ -26,7 +26,7 @@ pnpm run typecheck
 pnpm run lint
 pnpm test
 pnpm run build
-docker compose build web
+docker build -t legacy:local .
 ```
 
 Do not replace pnpm with npm or yarn.

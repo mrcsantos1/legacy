@@ -10,7 +10,7 @@ Use these project defaults:
 - Styling: Tailwind CSS
 - State management: Effector
 - Tests: Vitest and Testing Library
-- Infrastructure: Docker Compose
+- Infrastructure: Docker
 
 Important boundaries:
 

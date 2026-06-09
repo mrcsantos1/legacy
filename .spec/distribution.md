@@ -16,6 +16,8 @@ Status: Required — Wave 1
 - `next.config.ts` keeps `output: "standalone"`; Dockerfile runs `node server.js`.
 - Add `.github` PR + issue (bug/feature) templates requiring: provider-boundary
   awareness, tests, UI screenshots, verification output, doc updates.
+- CI runs on every PR: typecheck, lint, test, then `pnpm run build` + `docker build`.
+  All checks are required before merge (branch protection on `main`).
 - Contribution docs: AI-generated code is draft until reviewed, tested, SPEC-aligned.
 
 ## Acceptance
@@ -24,6 +26,7 @@ Status: Required — Wave 1
 - No public doc configures Redis via an env URL.
 - Repo no longer implies Compose is required.
 - PR + issue templates exist and are project-specific.
+- CI blocks merge unless typecheck, lint, test, build, and docker build pass.
 
 ## Verify
 
