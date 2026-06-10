@@ -325,12 +325,17 @@ function WorkbenchView() {
     dispatch({ type: "setSearchDraft", value });
   }
 
+  const connectionErrorMessage = resolveConnectionErrorMessage(
+    createConnection.error,
+    url
+  );
+
   const units = {
     error: resolveErrorMessage([
       connectionsQuery.error,
       namespacesQuery.error,
       resourcesQuery.error,
-      createConnection.error,
+      connectionErrorMessage,
       deleteConnection.error,
       mutateResource.error && !isNotFoundError(mutateResource.error)
         ? mutateResource.error
@@ -771,10 +776,45 @@ function describeResourceId(resourceId: string): string {
 
 function resolveErrorMessage(errors: ReadonlyArray<unknown>): string | null {
   for (const candidate of errors) {
+    if (typeof candidate === "string" && candidate.length > 0) {
+      return candidate;
+    }
+
     if (candidate instanceof Error && candidate.message) {
       return candidate.message;
     }
   }
 
   return null;
+}
+
+function resolveConnectionErrorMessage(
+  error: unknown,
+  url: string
+): string | null {
+  if (!(error instanceof Error) || !error.message) {
+    return null;
+  }
+
+  if (!isLoopbackRedisUrl(url)) {
+    return error.message;
+  }
+
+  return `${error.message} If Legacy is running in Docker, localhost points to the Legacy container. Use redis://host.docker.internal:6379 for Redis on your host, or use the Redis container name on a shared Docker network.`;
+}
+
+function isLoopbackRedisUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
 }
