@@ -25,6 +25,35 @@ describe("RedisAdapter", () => {
     createClientMock.mockReset();
   });
 
+  it("creates Redis clients with a bounded connection timeout and no reconnect loop", async () => {
+    const client = createMockRedisClient();
+    createClientMock.mockReturnValue(client);
+
+    await new RedisAdapter().testConnection(fakeConfig);
+
+    expect(createClientMock).toHaveBeenCalledWith({
+      socket: {
+        connectTimeout: 5000,
+        reconnectStrategy: false
+      },
+      url: "redis://localhost:6379"
+    });
+  });
+
+  it("returns a failed connection test when Redis cannot be reached", async () => {
+    const client = createMockRedisClient({
+      connect: vi.fn(async () => {
+        throw new Error("connect ECONNREFUSED 127.0.0.1:6379");
+      })
+    });
+    createClientMock.mockReturnValue(client);
+
+    await expect(new RedisAdapter().testConnection(fakeConfig)).resolves.toEqual({
+      error: "connect ECONNREFUSED 127.0.0.1:6379",
+      ok: false
+    });
+  });
+
   it("does not expose namespace nodes for keys that vanished after scan", async () => {
     const client = createMockRedisClient({
       exists: vi.fn(async (key: string) => (key === "user:alive" ? 1 : 0)),
@@ -173,6 +202,7 @@ describe("RedisAdapter", () => {
 
 function createMockRedisClient(
   overrides: Partial<{
+    connect: () => Promise<void>;
     exists: (key: string) => Promise<number>;
     get: (key: string) => Promise<string | null>;
     getRange: (key: string, start: number, end: number) => Promise<string>;

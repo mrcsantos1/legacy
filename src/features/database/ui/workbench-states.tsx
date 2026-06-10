@@ -14,7 +14,7 @@ export function ErrorBanner({ message }: { readonly message: string }) {
       role="alert"
     >
       <AlertTriangle aria-hidden="true" className="shrink-0" size={16} />
-      <span className="min-w-0 truncate">{message}</span>
+      <span className="min-w-0 break-words">{message}</span>
     </div>
   );
 }

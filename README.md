@@ -54,6 +54,29 @@ docker run --rm -p 3000:3000 legacy:local
 
 Open `http://localhost:3000` and enter a Redis URL in the app to connect.
 
+When Legacy runs in Docker, `localhost` inside a Redis URL points to the Legacy
+container itself. Use one of these connection patterns instead:
+
+- Redis running on your host machine:
+
+  ```text
+  redis://host.docker.internal:6379
+  ```
+
+- Redis running in another container on the same Docker network:
+
+  ```powershell
+  docker network create legacy-net
+  docker run -d --name redis-local --network legacy-net redis:latest
+  docker run --rm --name legacy --network legacy-net -p 3000:3000 legacy:local
+  ```
+
+  Then connect with:
+
+  ```text
+  redis://redis-local:6379
+  ```
+
 ## Verification
 
 Run these before opening a pull request or handing work back:

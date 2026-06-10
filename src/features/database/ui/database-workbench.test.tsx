@@ -70,6 +70,43 @@ function scalarInspection(input: {
 }
 
 describe("DatabaseWorkbench", () => {
+  it("shows Docker networking guidance when a localhost Redis connection fails", async () => {
+    const api: DatabaseApi = {
+      async createSessionConnection() {
+        throw new Error("connect ECONNREFUSED 127.0.0.1:6379");
+      },
+      async deleteSessionConnection() {
+        throw new Error("not used");
+      },
+      async getConnections() {
+        return { connections: [] };
+      },
+      async inspectResource() {
+        throw new Error("not used");
+      },
+      async listNamespaces() {
+        throw new Error("not used");
+      },
+      async listResources() {
+        throw new Error("not used");
+      },
+      async mutateResource() {
+        throw new Error("not used");
+      }
+    };
+
+    render(<DatabaseWorkbench api={api} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "host.docker.internal"
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "shared Docker network"
+    );
+  });
+
   it("renders connections, resource grid, and selected resource inspector", async () => {
     const api: DatabaseApi = {
       async createSessionConnection() {

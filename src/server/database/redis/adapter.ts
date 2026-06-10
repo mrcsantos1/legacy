@@ -69,6 +69,7 @@ const DEFAULT_PREVIEW_LIMIT = 100;
 const MAX_PREVIEW_LIMIT = 1000;
 const DEFAULT_PREVIEW_BYTES = 64 * 1024;
 const MAX_PREVIEW_BYTES = 1024 * 1024;
+const REDIS_CONNECT_TIMEOUT_MS = 5000;
 
 export class RedisAdapter implements DatabaseAdapter {
   readonly capabilities = {
@@ -427,7 +428,13 @@ export class RedisAdapter implements DatabaseAdapter {
     config: ConnectionConfig,
     operation: (client: RedisClientLike) => Promise<T>
   ): Promise<T> {
-    const client = createClient({ url: config.url });
+    const client = createClient({
+      socket: {
+        connectTimeout: REDIS_CONNECT_TIMEOUT_MS,
+        reconnectStrategy: false
+      },
+      url: config.url
+    });
 
     client.on("error", () => undefined);
     await client.connect();
