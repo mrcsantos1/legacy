@@ -2,14 +2,15 @@
 
 FROM node:26-alpine AS deps
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN npm install -g "$(node -p 'require("./package.json").packageManager')"
 RUN pnpm install --frozen-lockfile
 
 FROM node:26-alpine AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+COPY package.json ./
+RUN npm install -g "$(node -p 'require("./package.json").packageManager')"
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm run build

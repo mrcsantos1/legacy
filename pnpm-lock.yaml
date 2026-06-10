@@ -74,7 +74,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^2.1.9
-        version: 2.1.9(@types/node@22.19.20)(jsdom@29.1.1)(lightningcss@1.32.0)
+        version: 2.1.9(@types/node@25.9.2)(jsdom@29.1.1)(lightningcss@1.32.0)
 
 packages:
 
@@ -5439,7 +5439,7 @@ snapshots:
       fsevents: 2.3.3
       lightningcss: 1.32.0
 
-  vitest@2.1.9(@types/node@22.19.20)(jsdom@29.1.1)(lightningcss@1.32.0):
+  vitest@2.1.9(@types/node@25.9.2)(jsdom@29.1.1)(lightningcss@1.32.0):
     dependencies:
       '@vitest/expect': 2.1.9
       '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@25.9.2)(lightningcss@1.32.0))
@@ -5462,7 +5462,7 @@ snapshots:
       vite-node: 2.1.9(@types/node@25.9.2)(lightningcss@1.32.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 22.19.20
+      '@types/node': 25.9.2
       jsdom: 29.1.1
     transitivePeerDependencies:
       - less
